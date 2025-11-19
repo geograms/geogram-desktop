@@ -12,6 +12,7 @@ class LogService {
   final Queue<String> _logMessages = Queue<String>();
   final List<Function(String)> _listeners = [];
   File? _logFile;
+  IOSink? _logSink;
   bool _initialized = false;
 
   Future<void> init() async {
@@ -26,36 +27,37 @@ class LogService {
       }
 
       _logFile = File('${logDir.path}/log.txt');
+
+      // Open the file sink once and keep it open
+      _logSink = _logFile!.openWrite(mode: FileMode.append);
       _initialized = true;
 
       // Write startup marker
-      await _writeToFile('\n=== Application Started: ${DateTime.now()} ===\n');
+      _logSink!.writeln('\n=== Application Started: ${DateTime.now()} ===');
+      await _logSink!.flush();
     } catch (e) {
       // Can't use log() here as we're in init(), use stderr
       stderr.writeln('Error initializing log file: $e');
     }
   }
 
-  Future<void> _writeToFile(String message) async {
-    if (_logFile == null) return;
+  void _writeToFile(String message) {
+    if (_logSink == null) return;
 
     try {
-      // Check file size and rotate if needed (keep last 1MB)
-      if (await _logFile!.exists()) {
-        final fileSize = await _logFile!.length();
-        if (fileSize > 5 * 1024 * 1024) { // 5MB
-          // Keep last 1MB
-          final contents = await _logFile!.readAsString();
-          final lines = contents.split('\n');
-          final keepLines = lines.length > 1000 ? lines.sublist(lines.length - 1000) : lines;
-          await _logFile!.writeAsString(keepLines.join('\n'));
-        }
-      }
-
-      // Append log entry
-      await _logFile!.writeAsString('$message\n', mode: FileMode.append, flush: true);
+      // Write log entry to the open sink
+      _logSink!.writeln(message);
     } catch (e) {
       stderr.writeln('Error writing to log file: $e');
+    }
+  }
+
+  Future<void> dispose() async {
+    try {
+      await _logSink?.flush();
+      await _logSink?.close();
+    } catch (e) {
+      stderr.writeln('Error closing log file: $e');
     }
   }
 

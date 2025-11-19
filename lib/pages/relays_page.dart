@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import '../models/relay.dart';
 import '../services/relay_service.dart';
 import '../services/log_service.dart';
+import '../services/relay_discovery_service.dart';
+import '../services/profile_service.dart';
 
 class RelaysPage extends StatefulWidget {
   const RelaysPage({super.key});
@@ -12,6 +16,7 @@ class RelaysPage extends StatefulWidget {
 
 class _RelaysPageState extends State<RelaysPage> {
   final RelayService _relayService = RelayService();
+  final ProfileService _profileService = ProfileService();
   List<Relay> _allRelays = [];
   bool _isLoading = true;
 
@@ -19,6 +24,69 @@ class _RelaysPageState extends State<RelaysPage> {
   void initState() {
     super.initState();
     _loadRelays();
+    _ensureUserLocation();
+  }
+
+  /// Ensure user location is set, auto-detect if not
+  Future<void> _ensureUserLocation() async {
+    try {
+      final profile = _profileService.getProfile();
+
+      // If location is already set, we're done
+      if (profile.latitude != null && profile.longitude != null) {
+        LogService().log('User location already set: ${profile.latitude}, ${profile.longitude}');
+        return;
+      }
+
+      // Auto-detect location from IP
+      LogService().log('User location not set, detecting from IP...');
+      final location = await _detectLocationFromIP();
+
+      if (location != null) {
+        await _profileService.updateProfile(
+          latitude: location['lat'],
+          longitude: location['lon'],
+          locationName: location['locationName'],
+        );
+        LogService().log('User location auto-detected and saved: ${location['lat']}, ${location['lon']}');
+
+        // Reload relays to show distances
+        _loadRelays();
+      } else {
+        LogService().log('Unable to auto-detect user location (offline?)');
+      }
+    } catch (e) {
+      LogService().log('Error ensuring user location: $e');
+    }
+  }
+
+  /// Detect location from IP address
+  Future<Map<String, dynamic>?> _detectLocationFromIP() async {
+    try {
+      final response = await http.get(
+        Uri.parse('http://ip-api.com/json/'),
+      ).timeout(const Duration(seconds: 5));
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+
+        if (data['status'] == 'success') {
+          final lat = data['lat'] as double;
+          final lon = data['lon'] as double;
+          final city = data['city'] as String?;
+          final country = data['country'] as String?;
+
+          return {
+            'lat': lat,
+            'lon': lon,
+            'locationName': (city != null && country != null) ? '$city, $country' : null,
+          };
+        }
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
   }
 
   Future<void> _loadRelays() async {
@@ -169,32 +237,123 @@ class _RelaysPageState extends State<RelaysPage> {
     }
   }
 
-  Future<void> _testConnection(Relay relay) async {
-    // Show loading indicator
+  Future<void> _clearAllRelays() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Clear All Relays'),
+        content: const Text('Are you sure you want to delete ALL relays? This cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Clear All'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      try {
+        final relays = _relayService.getAllRelays();
+        for (var relay in relays) {
+          await _relayService.deleteRelay(relay.url);
+        }
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('All relays cleared')),
+          );
+        }
+        _loadRelays();
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error clearing relays: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _scanNow() async {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Testing connection to ${relay.name}...'),
-        duration: const Duration(seconds: 1),
+      const SnackBar(
+        content: Text('Scanning local network for relays...'),
+        duration: Duration(seconds: 2),
       ),
     );
 
     try {
-      await _relayService.testConnection(relay.url);
-      _loadRelays();
-
+      await RelayDiscoveryService().discover();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Connection test successful'),
+            content: Text('Network scan complete. Check log window for details.'),
             backgroundColor: Colors.green,
           ),
         );
+      }
+      _loadRelays();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error during scan: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _testConnection(Relay relay) async {
+    // Show loading indicator
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Connecting to ${relay.name} with hello handshake...'),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+
+    try {
+      // Use new connectRelay method with hello handshake
+      final success = await _relayService.connectRelay(relay.url);
+      _loadRelays();
+
+      if (mounted) {
+        if (success) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('✓ Connected to ${relay.name}! Check log window for details.'),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Connection failed. Check log window for details.'),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Connection test failed: $e'),
+            content: Text('Connection error: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -221,6 +380,18 @@ class _RelaysPageState extends State<RelaysPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Internet Relays'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.radar),
+            onPressed: _scanNow,
+            tooltip: 'Scan for relays on local network',
+          ),
+          IconButton(
+            icon: const Icon(Icons.delete_sweep),
+            onPressed: _clearAllRelays,
+            tooltip: 'Clear all relays',
+          ),
+        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -272,7 +443,7 @@ class _RelaysPageState extends State<RelaysPage> {
 
                   const SizedBox(height: 24),
 
-                  // Selected Relays Section
+                  // Selected Relay Section
                   Row(
                     children: [
                       Icon(
@@ -282,7 +453,7 @@ class _RelaysPageState extends State<RelaysPage> {
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        'Selected Relays',
+                        _selectedRelays.length == 1 ? 'Selected Relay' : 'Selected Relays',
                         style: Theme.of(context).textTheme.titleLarge?.copyWith(
                               fontWeight: FontWeight.bold,
                             ),
@@ -306,14 +477,19 @@ class _RelaysPageState extends State<RelaysPage> {
                       ),
                     )
                   else
-                    ..._selectedRelays.map((relay) => _RelayCard(
-                          relay: relay,
-                          onSetPreferred: () => _setPreferred(relay),
-                          onSetBackup: () => _setBackup(relay),
-                          onSetAvailable: () => _setAvailable(relay),
-                          onDelete: () => _deleteRelay(relay),
-                          onTest: () => _testConnection(relay),
-                        )),
+                    ..._selectedRelays.map((relay) {
+                      final profile = _profileService.getProfile();
+                      return _RelayCard(
+                        relay: relay,
+                        userLatitude: profile.latitude,
+                        userLongitude: profile.longitude,
+                        onSetPreferred: () => _setPreferred(relay),
+                        onSetBackup: () => _setBackup(relay),
+                        onSetAvailable: () => _setAvailable(relay),
+                        onDelete: () => _deleteRelay(relay),
+                        onTest: () => _testConnection(relay),
+                      );
+                    }),
 
                   const SizedBox(height: 32),
 
@@ -351,14 +527,20 @@ class _RelaysPageState extends State<RelaysPage> {
                       ),
                     )
                   else
-                    ..._availableRelays.map((relay) => _RelayCard(
-                          relay: relay,
-                          onSetPreferred: () => _setPreferred(relay),
-                          onSetBackup: () => _setBackup(relay),
-                          onSetAvailable: null, // Already available
-                          onDelete: () => _deleteRelay(relay),
-                          onTest: () => _testConnection(relay),
-                        )),
+                    ..._availableRelays.map((relay) {
+                      final profile = _profileService.getProfile();
+                      return _RelayCard(
+                        relay: relay,
+                        userLatitude: profile.latitude,
+                        userLongitude: profile.longitude,
+                        onSetPreferred: () => _setPreferred(relay),
+                        onSetBackup: () => _setBackup(relay),
+                        onSetAvailable: null, // Already available
+                        onDelete: () => _deleteRelay(relay),
+                        onTest: () => _testConnection(relay),
+                        isAvailableRelay: true,
+                      );
+                    }),
 
                   const SizedBox(height: 80),
                 ],
@@ -376,19 +558,25 @@ class _RelaysPageState extends State<RelaysPage> {
 // Relay Card Widget
 class _RelayCard extends StatelessWidget {
   final Relay relay;
+  final double? userLatitude;
+  final double? userLongitude;
   final VoidCallback onSetPreferred;
   final VoidCallback onSetBackup;
   final VoidCallback? onSetAvailable;
   final VoidCallback onDelete;
   final VoidCallback onTest;
+  final bool isAvailableRelay;
 
   const _RelayCard({
     required this.relay,
+    this.userLatitude,
+    this.userLongitude,
     required this.onSetPreferred,
     required this.onSetBackup,
     required this.onSetAvailable,
     required this.onDelete,
     required this.onTest,
+    this.isAvailableRelay = false,
   });
 
   Color _getStatusColor(BuildContext context) {
@@ -398,7 +586,10 @@ class _RelayCard extends StatelessWidget {
       case 'backup':
         return Colors.orange;
       default:
-        return Theme.of(context).colorScheme.outline;
+        // Show green if relay is online/reachable (has device count data)
+        return relay.connectedDevices != null
+            ? Colors.green
+            : Theme.of(context).colorScheme.outline;
     }
   }
 
@@ -478,6 +669,27 @@ class _RelayCard extends StatelessWidget {
                           ],
                         ),
                       ],
+                      // Display distance if available
+                      if (relay.getDistanceString(userLatitude, userLongitude) != null) ...[
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.straighten,
+                              size: 14,
+                              color: Theme.of(context).colorScheme.secondary,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              relay.getDistanceString(userLatitude, userLongitude)!,
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: Theme.of(context).colorScheme.secondary,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                            ),
+                          ],
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -505,29 +717,55 @@ class _RelayCard extends StatelessWidget {
 
             const SizedBox(height: 12),
 
-            // Connection Status
-            if (relay.lastChecked != null)
+            // Connection Status (hide for available relays)
+            if (relay.lastChecked != null && !isAvailableRelay)
               Padding(
                 padding: const EdgeInsets.only(bottom: 12),
-                child: Row(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(
-                      relay.isConnected ? Icons.check_circle : Icons.error,
-                      size: 16,
-                      color: relay.isConnected ? Colors.green : Colors.red,
+                    Row(
+                      children: [
+                        Icon(
+                          relay.isConnected ? Icons.check_circle : Icons.error,
+                          size: 16,
+                          color: relay.isConnected ? Colors.green : Colors.red,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          relay.connectionStatus,
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                        const Spacer(),
+                        Text(
+                          'Last checked: ${_formatTime(relay.lastChecked!)}',
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                              ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 4),
-                    Text(
-                      relay.connectionStatus,
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                    const Spacer(),
-                    Text(
-                      'Last checked: ${_formatTime(relay.lastChecked!)}',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    // Show connected devices count if available
+                    if (relay.connectedDevices != null) ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.devices,
+                            size: 14,
+                            color: Theme.of(context).colorScheme.tertiary,
                           ),
-                    ),
+                          const SizedBox(width: 4),
+                          Text(
+                            '${relay.connectedDevices} ${relay.connectedDevices == 1 ? "device" : "devices"} connected',
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  color: Theme.of(context).colorScheme.tertiary,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -537,6 +775,7 @@ class _RelayCard extends StatelessWidget {
               spacing: 8,
               runSpacing: 8,
               children: [
+                // Only show Set Preferred if NOT already preferred
                 if (relay.status != 'preferred')
                   OutlinedButton.icon(
                     onPressed: onSetPreferred,

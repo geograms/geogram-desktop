@@ -9,6 +9,9 @@ class Profile {
   String npub; // NOSTR public key
   String nsec; // NOSTR private key (secret)
   String preferredColor;
+  double? latitude; // User's current latitude
+  double? longitude; // User's current longitude
+  String? locationName; // Human-readable location
 
   Profile({
     this.callsign = '',
@@ -18,6 +21,9 @@ class Profile {
     this.npub = '',
     this.nsec = '',
     this.preferredColor = 'blue',
+    this.latitude,
+    this.longitude,
+    this.locationName,
   });
 
   /// Create a Profile from JSON map
@@ -30,6 +36,9 @@ class Profile {
       npub: json['npub'] as String? ?? '',
       nsec: json['nsec'] as String? ?? '',
       preferredColor: json['preferredColor'] as String? ?? 'blue',
+      latitude: json['latitude'] as double?,
+      longitude: json['longitude'] as double?,
+      locationName: json['locationName'] as String?,
     );
   }
 
@@ -43,6 +52,9 @@ class Profile {
       'npub': npub,
       'nsec': nsec,
       'preferredColor': preferredColor,
+      if (latitude != null) 'latitude': latitude,
+      if (longitude != null) 'longitude': longitude,
+      if (locationName != null) 'locationName': locationName,
     };
   }
 
@@ -55,6 +67,9 @@ class Profile {
     String? npub,
     String? nsec,
     String? preferredColor,
+    double? latitude,
+    double? longitude,
+    String? locationName,
   }) {
     return Profile(
       callsign: callsign ?? this.callsign,
@@ -64,6 +79,9 @@ class Profile {
       npub: npub ?? this.npub,
       nsec: nsec ?? this.nsec,
       preferredColor: preferredColor ?? this.preferredColor,
+      latitude: latitude ?? this.latitude,
+      longitude: longitude ?? this.longitude,
+      locationName: locationName ?? this.locationName,
     );
   }
 }
