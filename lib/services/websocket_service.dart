@@ -191,13 +191,18 @@ class WebSocketService {
       String fileContent;
       String actualFileName;
 
+      final storagePath = collection.storagePath;
+      if (storagePath == null) {
+        throw Exception('Collection has no storage path: $collectionName');
+      }
+
       if (fileName == 'collection') {
-        final file = File('${collection.storagePath}/collection.js');
+        final file = File('$storagePath/collection.js');
         fileContent = await file.readAsString();
         actualFileName = 'collection.js';
       } else if (fileName == 'tree-data') {
         // Generate tree-data dynamically by scanning collection directory
-        final treeData = await _generateTreeData(collection.storagePath);
+        final treeData = await _generateTreeData(storagePath);
         fileContent = treeData;
         actualFileName = 'extra/tree-data.js';
       } else {
