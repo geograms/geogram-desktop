@@ -185,12 +185,24 @@ class WebSocketService {
       );
 
       String fileContent;
+      String actualFileName;
+
       if (fileName == 'collection') {
         final file = File('${collection.storagePath}/collection.js');
         fileContent = await file.readAsString();
+        actualFileName = 'collection.js';
       } else if (fileName == 'tree-data') {
-        final file = File('${collection.storagePath}/tree-data.js');
-        fileContent = await file.readAsString();
+        // Try extra/tree-data.js first (standard location)
+        var file = File('${collection.storagePath}/extra/tree-data.js');
+        if (await file.exists()) {
+          fileContent = await file.readAsString();
+          actualFileName = 'extra/tree-data.js';
+        } else {
+          // Fallback to root tree-data.js
+          file = File('${collection.storagePath}/tree-data.js');
+          fileContent = await file.readAsString();
+          actualFileName = 'tree-data.js';
+        }
       } else {
         throw Exception('Unknown file: $fileName');
       }
@@ -199,7 +211,7 @@ class WebSocketService {
         'type': 'COLLECTION_FILE_RESPONSE',
         'requestId': requestId,
         'collectionName': collectionName,
-        'fileName': fileName,
+        'fileName': actualFileName,
         'fileContent': fileContent,
       };
 
