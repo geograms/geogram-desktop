@@ -1500,7 +1500,7 @@ class _CollectionBrowserPageState extends State<CollectionBrowserPage> {
                     Icon(Icons.lock_outline, size: 16, color: Theme.of(context).colorScheme.secondary),
                     const SizedBox(width: 4),
                     Text(
-                      widget.collection.visibility,
+                      _i18n.t(widget.collection.visibility),
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                   ],

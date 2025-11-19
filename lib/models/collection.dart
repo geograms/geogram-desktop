@@ -151,19 +151,6 @@ window.COLLECTION_DATA = $jsonStr;
     return JsonEncoder.withIndent('  ').convert(data);
   }
 
-  /// Generate tree-data.js content with file nodes
-  String generateTreeDataJs([List<FileNode>? fileNodes]) {
-    final data = {
-      'files': fileNodes?.map((f) => f.toJson()).toList() ?? [],
-    };
-    final jsonStr = JsonEncoder.withIndent('  ').convert(data);
-    return '''
-// Geogram Collection File Tree
-// Generated: ${DateTime.now().toIso8601String()}
-window.TREE_DATA = $jsonStr;
-''';
-  }
-
   /// Format file size for display
   String get formattedSize {
     if (totalSize < 1024) return '$totalSize B';

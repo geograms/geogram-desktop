@@ -1,8 +1,12 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:path_provider/path_provider.dart';
+import 'package:crypto/crypto.dart';
+import 'package:mime/mime.dart';
 import '../models/collection.dart';
 import '../util/nostr_key_generator.dart';
+import '../util/tlsh.dart';
 import 'config_service.dart';
 
 /// Service for managing collections on disk
@@ -125,6 +129,27 @@ class CollectionService {
       // Load security settings (will override defaults if file exists)
       await _loadSecuritySettings(collection, folder);
 
+      // Check if all required files exist (collection.js, tree.json, data.js)
+      if (!await _hasRequiredFiles(folder)) {
+        stderr.writeln('Missing required files for collection: ${collection.title}');
+        stderr.writeln('Generating tree.json and data.js...');
+
+        // Generate files synchronously on first load
+        await _generateAndSaveTreeJson(folder);
+        await _generateAndSaveDataJs(folder);
+      } else {
+        // Validate tree.json matches directory contents
+        final isValid = await _validateTreeJson(folder);
+        if (!isValid) {
+          stderr.writeln('tree.json out of sync for collection: ${collection.title}');
+          stderr.writeln('Regenerating tree.json and data.js...');
+
+          // Regenerate files if out of sync
+          await _generateAndSaveTreeJson(folder);
+          await _generateAndSaveDataJs(folder);
+        }
+      }
+
       // Count files
       await _countCollectionFiles(collection, folder);
 
@@ -143,10 +168,11 @@ class CollectionService {
     try {
       await for (var entity in folder.list(recursive: true, followLinks: false)) {
         if (entity is File) {
-          // Skip metadata files
+          // Skip metadata files in the extra directory
           if (entity.path.endsWith('collection.js') ||
               entity.path.endsWith('security.json') ||
-              entity.path.endsWith('tree-data.js')) {
+              entity.path.endsWith('tree.json') ||
+              entity.path.endsWith('data.js')) {
             continue;
           }
 
@@ -266,9 +292,12 @@ class CollectionService {
     final securityJsonFile = File('${folder.path}/extra/security.json');
     await securityJsonFile.writeAsString(collection.generateSecurityJson());
 
-    // Write extra/tree-data.js
-    final treeDataJsFile = File('${folder.path}/extra/tree-data.js');
-    await treeDataJsFile.writeAsString(collection.generateTreeDataJs());
+    // Generate and write tree.json and data.js
+    // For new collections, generate synchronously so collection is fully ready
+    stderr.writeln('Generating tree.json and data.js...');
+    await _generateAndSaveTreeJson(folder);
+    await _generateAndSaveDataJs(folder);
+    stderr.writeln('Collection files generated successfully');
   }
 
   /// Delete a collection
@@ -435,7 +464,11 @@ class CollectionService {
 
     // Recount files and update metadata
     await _countCollectionFiles(collection, collectionDir);
-    await _updateTreeData(collection, collectionDir);
+
+    // Regenerate tree.json and data.js
+    await _generateAndSaveTreeJson(collectionDir);
+    await _generateAndSaveDataJs(collectionDir);
+
     await updateCollection(collection);
   }
 
@@ -468,8 +501,11 @@ class CollectionService {
     await newFolder.create(recursive: false);
     stderr.writeln('Created folder: $sanitized');
 
+    // Regenerate tree.json and data.js
+    await _generateAndSaveTreeJson(collectionDir);
+    await _generateAndSaveDataJs(collectionDir);
+
     // Update metadata
-    await _updateTreeData(collection, collectionDir);
     await updateCollection(collection);
   }
 
@@ -498,7 +534,11 @@ class CollectionService {
 
     // Recount files and update metadata
     await _countCollectionFiles(collection, collectionDir);
-    await _updateTreeData(collection, collectionDir);
+
+    // Regenerate tree.json and data.js
+    await _generateAndSaveTreeJson(collectionDir);
+    await _generateAndSaveDataJs(collectionDir);
+
     await updateCollection(collection);
   }
 
@@ -630,18 +670,6 @@ class CollectionService {
     return fileNodes;
   }
 
-  /// Update tree-data.js with current file structure
-  Future<void> _updateTreeData(Collection collection, Directory collectionDir) async {
-    try {
-      final fileTree = await _buildFileTree(collectionDir);
-      final treeDataFile = File('${collectionDir.path}/extra/tree-data.js');
-      await treeDataFile.writeAsString(collection.generateTreeDataJs(fileTree));
-      stderr.writeln('Updated tree-data.js with ${fileTree.length} top-level items');
-    } catch (e) {
-      stderr.writeln('Error updating tree-data.js: $e');
-    }
-  }
-
   /// Load file tree from collection
   Future<List<FileNode>> loadFileTree(Collection collection) async {
     if (collection.storagePath == null) {
@@ -650,5 +678,267 @@ class CollectionService {
 
     final collectionDir = Directory(collection.storagePath!);
     return await _buildFileTree(collectionDir);
+  }
+
+  /// Generate and save tree.json
+  Future<void> _generateAndSaveTreeJson(Directory folder) async {
+    try {
+      final entries = <Map<String, dynamic>>[];
+
+      // Recursively scan all files and directories
+      await for (var entity in folder.list(recursive: true, followLinks: false)) {
+        final relativePath = entity.path.substring(folder.path.length + 1);
+
+        // Skip hidden files, metadata files, and the extra directory
+        if (relativePath.startsWith('.') ||
+            relativePath == 'collection.js' ||
+            relativePath == 'extra' ||
+            relativePath.startsWith('extra/')) {
+          continue;
+        }
+
+        if (entity is Directory) {
+          entries.add({
+            'path': relativePath,
+            'name': entity.path.split('/').last,
+            'type': 'directory',
+          });
+        } else if (entity is File) {
+          final stat = await entity.stat();
+          entries.add({
+            'path': relativePath,
+            'name': entity.path.split('/').last,
+            'type': 'file',
+            'size': stat.size,
+          });
+        }
+      }
+
+      // Sort entries
+      entries.sort((a, b) {
+        if (a['type'] == 'directory' && b['type'] != 'directory') return -1;
+        if (a['type'] != 'directory' && b['type'] == 'directory') return 1;
+        return (a['path'] as String).compareTo(b['path'] as String);
+      });
+
+      // Write to tree.json
+      final treeJsonFile = File('${folder.path}/extra/tree.json');
+      final jsonContent = JsonEncoder.withIndent('  ').convert(entries);
+      await treeJsonFile.writeAsString(jsonContent);
+
+      stderr.writeln('Generated tree.json with ${entries.length} entries');
+    } catch (e) {
+      stderr.writeln('Error generating tree.json: $e');
+      rethrow;
+    }
+  }
+
+  /// Generate and save data.js with full metadata
+  Future<void> _generateAndSaveDataJs(Directory folder) async {
+    try {
+      final entries = <Map<String, dynamic>>[];
+      final filesToProcess = <File>[];
+      final directoriesToAdd = <Map<String, dynamic>>[];
+
+      // First pass: collect all entities without reading files
+      await for (var entity in folder.list(recursive: true, followLinks: false)) {
+        final relativePath = entity.path.substring(folder.path.length + 1);
+
+        // Skip hidden files, metadata files, and the extra directory
+        if (relativePath.startsWith('.') ||
+            relativePath == 'collection.js' ||
+            relativePath == 'extra' ||
+            relativePath.startsWith('extra/')) {
+          continue;
+        }
+
+        if (entity is Directory) {
+          directoriesToAdd.add({
+            'path': relativePath,
+            'name': entity.path.split('/').last,
+            'type': 'directory',
+          });
+        } else if (entity is File) {
+          filesToProcess.add(entity);
+        }
+      }
+
+      // Add directories first
+      entries.addAll(directoriesToAdd);
+
+      // Process files in batches to avoid too many open file handles
+      const batchSize = 20;
+      for (var i = 0; i < filesToProcess.length; i += batchSize) {
+        final end = (i + batchSize < filesToProcess.length) ? i + batchSize : filesToProcess.length;
+        final batch = filesToProcess.sublist(i, end);
+
+        for (var file in batch) {
+          try {
+            final relativePath = file.path.substring(folder.path.length + 1);
+            final stat = await file.stat();
+
+            // Read file with explicit error handling
+            late List<int> bytes;
+            try {
+              bytes = await file.readAsBytes();
+            } catch (e) {
+              stderr.writeln('Warning: Could not read file $relativePath: $e');
+              // Add entry without hashes if file can't be read
+              entries.add({
+                'path': relativePath,
+                'name': file.path.split('/').last,
+                'type': 'file',
+                'size': stat.size,
+                'mimeType': 'application/octet-stream',
+                'hashes': {},
+                'metadata': {
+                  'mime_type': 'application/octet-stream',
+                },
+              });
+              continue;
+            }
+
+            // Compute hashes
+            final sha1Hash = sha1.convert(bytes).toString();
+            final mimeType = lookupMimeType(file.path) ?? 'application/octet-stream';
+            final tlshHash = TLSH.hash(Uint8List.fromList(bytes));
+
+            final hashes = <String, dynamic>{
+              'sha1': sha1Hash,
+            };
+            if (tlshHash != null) {
+              hashes['tlsh'] = tlshHash;
+            }
+
+            entries.add({
+              'path': relativePath,
+              'name': file.path.split('/').last,
+              'type': 'file',
+              'size': stat.size,
+              'mimeType': mimeType,
+              'hashes': hashes,
+              'metadata': {
+                'mime_type': mimeType,
+              },
+            });
+
+            // Clear bytes from memory
+            bytes = [];
+          } catch (e) {
+            stderr.writeln('Warning: Error processing file ${file.path}: $e');
+          }
+        }
+
+        // Small delay between batches to allow OS to close file handles
+        if (i + batchSize < filesToProcess.length) {
+          await Future.delayed(Duration(milliseconds: 10));
+        }
+      }
+
+      // Sort entries
+      entries.sort((a, b) {
+        if (a['type'] == 'directory' && b['type'] != 'directory') return -1;
+        if (a['type'] != 'directory' && b['type'] == 'directory') return 1;
+        return (a['path'] as String).compareTo(b['path'] as String);
+      });
+
+      // Write to data.js
+      final dataJsFile = File('${folder.path}/extra/data.js');
+      final now = DateTime.now().toIso8601String();
+      final jsonData = JsonEncoder.withIndent('  ').convert(entries);
+      final jsContent = '''// Geogram Collection Data with Metadata
+// Generated: $now
+window.COLLECTION_DATA_FULL = $jsonData;
+''';
+      await dataJsFile.writeAsString(jsContent);
+
+      stderr.writeln('Generated data.js with ${entries.length} entries (${filesToProcess.length} files processed)');
+    } catch (e) {
+      stderr.writeln('Error generating data.js: $e');
+      rethrow;
+    }
+  }
+
+  /// Validate that tree.json matches actual directory contents
+  Future<bool> _validateTreeJson(Directory folder) async {
+    try {
+      final treeJsonFile = File('${folder.path}/extra/tree.json');
+      if (!await treeJsonFile.exists()) {
+        stderr.writeln('tree.json does not exist, needs regeneration');
+        return false;
+      }
+
+      // Parse existing tree.json
+      final treeContent = await treeJsonFile.readAsString();
+      final treeData = json.decode(treeContent) as List<dynamic>;
+      final existingPaths = <String>{};
+
+      for (var entry in treeData) {
+        final entryMap = entry as Map<String, dynamic>;
+        existingPaths.add(entryMap['path'] as String);
+      }
+
+      // Scan actual directory
+      final actualPaths = <String>{};
+      await for (var entity in folder.list(recursive: true, followLinks: false)) {
+        final relativePath = entity.path.substring(folder.path.length + 1);
+
+        // Skip metadata files and extra directory
+        if (relativePath.startsWith('.') ||
+            relativePath == 'collection.js' ||
+            relativePath == 'extra' ||
+            relativePath.startsWith('extra/')) {
+          continue;
+        }
+
+        actualPaths.add(relativePath);
+      }
+
+      // Compare paths
+      final pathsMatch = existingPaths.length == actualPaths.length &&
+                        existingPaths.containsAll(actualPaths);
+
+      if (!pathsMatch) {
+        stderr.writeln('tree.json is out of sync with directory contents');
+        stderr.writeln('  Expected: ${actualPaths.length} entries, Found: ${existingPaths.length}');
+      }
+
+      return pathsMatch;
+    } catch (e) {
+      stderr.writeln('Error validating tree.json: $e');
+      return false;
+    }
+  }
+
+  /// Check if collection has all required files
+  Future<bool> _hasRequiredFiles(Directory folder) async {
+    final collectionJs = File('${folder.path}/collection.js');
+    final treeJson = File('${folder.path}/extra/tree.json');
+    final dataJs = File('${folder.path}/extra/data.js');
+
+    return await collectionJs.exists() &&
+           await treeJson.exists() &&
+           await dataJs.exists();
+  }
+
+  /// Ensure collection files are up to date
+  Future<void> ensureCollectionFilesUpdated(Collection collection) async {
+    if (collection.storagePath == null) {
+      return;
+    }
+
+    final folder = Directory(collection.storagePath!);
+    if (!await folder.exists()) {
+      return;
+    }
+
+    // Check if tree.json is valid
+    final isValid = await _validateTreeJson(folder);
+
+    if (!isValid || !await _hasRequiredFiles(folder)) {
+      stderr.writeln('Regenerating collection files for ${collection.title}...');
+      await _generateAndSaveTreeJson(folder);
+      await _generateAndSaveDataJs(folder);
+    }
   }
 }
