@@ -148,8 +148,83 @@ jobs:
         path: geogram-desktop-web.tar.gz
         retention-days: 30
 
+  build-android:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+
+    - name: Setup Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        channel: 'stable'
+        cache: true
+
+    - name: Install dependencies
+      run: flutter pub get
+
+    - name: Build Android APK
+      run: flutter build apk --release
+
+    - name: Build Android App Bundle
+      run: flutter build appbundle --release
+
+    - name: Upload APK artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: geogram-desktop-android-apk
+        path: build/app/outputs/flutter-apk/app-release.apk
+        retention-days: 30
+
+    - name: Upload App Bundle artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: geogram-desktop-android-aab
+        path: build/app/outputs/bundle/release/app-release.aab
+        retention-days: 30
+
+  build-ios:
+    runs-on: macos-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        channel: 'stable'
+        cache: true
+
+    - name: Install dependencies
+      run: flutter pub get
+
+    - name: Build iOS (no codesign)
+      run: flutter build ios --release --no-codesign
+
+    - name: Create IPA archive
+      run: |
+        cd build/ios/iphoneos
+        mkdir Payload
+        cp -r Runner.app Payload/
+        zip -r ../../../geogram-desktop-ios-unsigned.ipa Payload/
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: geogram-desktop-ios-unsigned
+        path: geogram-desktop-ios-unsigned.ipa
+        retention-days: 30
+
   create-release:
-    needs: [build-linux, build-windows, build-macos, build-web]
+    needs: [build-linux, build-windows, build-macos, build-web, build-android, build-ios]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
 
@@ -167,6 +242,9 @@ jobs:
           artifacts/geogram-desktop-windows-x64/geogram-desktop-windows-x64.zip
           artifacts/geogram-desktop-macos-x64/geogram-desktop-macos-x64.zip
           artifacts/geogram-desktop-web/geogram-desktop-web.tar.gz
+          artifacts/geogram-desktop-android-apk/app-release.apk
+          artifacts/geogram-desktop-android-aab/app-release.aab
+          artifacts/geogram-desktop-ios-unsigned/geogram-desktop-ios-unsigned.ipa
         draft: false
         prerelease: false
       env:
