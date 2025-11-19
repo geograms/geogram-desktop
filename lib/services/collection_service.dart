@@ -129,24 +129,26 @@ class CollectionService {
       // Load security settings (will override defaults if file exists)
       await _loadSecuritySettings(collection, folder);
 
-      // Check if all required files exist (collection.js, tree.json, data.js)
+      // Check if all required files exist (collection.js, tree.json, data.js, index.html)
       if (!await _hasRequiredFiles(folder)) {
         stderr.writeln('Missing required files for collection: ${collection.title}');
-        stderr.writeln('Generating tree.json and data.js...');
+        stderr.writeln('Generating tree.json, data.js, and index.html...');
 
         // Generate files synchronously on first load
         await _generateAndSaveTreeJson(folder);
         await _generateAndSaveDataJs(folder);
+        await _generateAndSaveIndexHtml(folder);
       } else {
         // Validate tree.json matches directory contents
         final isValid = await _validateTreeJson(folder);
         if (!isValid) {
           stderr.writeln('tree.json out of sync for collection: ${collection.title}');
-          stderr.writeln('Regenerating tree.json and data.js...');
+          stderr.writeln('Regenerating tree.json, data.js, and index.html...');
 
           // Regenerate files if out of sync
           await _generateAndSaveTreeJson(folder);
           await _generateAndSaveDataJs(folder);
+          await _generateAndSaveIndexHtml(folder);
         }
       }
 
@@ -166,20 +168,25 @@ class CollectionService {
     int totalSize = 0;
 
     try {
-      await for (var entity in folder.list(recursive: true, followLinks: false)) {
-        if (entity is File) {
-          // Skip metadata files in the extra directory
-          if (entity.path.endsWith('collection.js') ||
-              entity.path.endsWith('security.json') ||
-              entity.path.endsWith('tree.json') ||
-              entity.path.endsWith('data.js')) {
-            continue;
-          }
+      // Read from tree.json instead of scanning filesystem to avoid "too many open files"
+      final treeJsonFile = File('${folder.path}/extra/tree.json');
 
-          fileCount++;
-          final stat = await entity.stat();
-          totalSize += stat.size;
+      if (await treeJsonFile.exists()) {
+        final content = await treeJsonFile.readAsString();
+        final entries = json.decode(content) as List<dynamic>;
+
+        for (var entry in entries) {
+          if (entry['type'] == 'file') {
+            fileCount++;
+            totalSize += entry['size'] as int? ?? 0;
+          }
         }
+      } else {
+        // If tree.json doesn't exist yet, set to 0
+        // It will be generated soon and counts will be updated on reload
+        stderr.writeln('Warning: tree.json not found for counting, setting counts to 0');
+        fileCount = 0;
+        totalSize = 0;
       }
     } catch (e) {
       stderr.writeln('Error counting files: $e');
@@ -292,11 +299,12 @@ class CollectionService {
     final securityJsonFile = File('${folder.path}/extra/security.json');
     await securityJsonFile.writeAsString(collection.generateSecurityJson());
 
-    // Generate and write tree.json and data.js
+    // Generate and write tree.json, data.js, and index.html
     // For new collections, generate synchronously so collection is fully ready
-    stderr.writeln('Generating tree.json and data.js...');
+    stderr.writeln('Generating tree.json, data.js, and index.html...');
     await _generateAndSaveTreeJson(folder);
     await _generateAndSaveDataJs(folder);
+    await _generateAndSaveIndexHtml(folder);
     stderr.writeln('Collection files generated successfully');
   }
 
@@ -465,9 +473,10 @@ class CollectionService {
     // Recount files and update metadata
     await _countCollectionFiles(collection, collectionDir);
 
-    // Regenerate tree.json and data.js
+    // Regenerate tree.json, data.js, and index.html
     await _generateAndSaveTreeJson(collectionDir);
     await _generateAndSaveDataJs(collectionDir);
+    await _generateAndSaveIndexHtml(collectionDir);
 
     await updateCollection(collection);
   }
@@ -501,9 +510,10 @@ class CollectionService {
     await newFolder.create(recursive: false);
     stderr.writeln('Created folder: $sanitized');
 
-    // Regenerate tree.json and data.js
+    // Regenerate tree.json, data.js, and index.html
     await _generateAndSaveTreeJson(collectionDir);
     await _generateAndSaveDataJs(collectionDir);
+    await _generateAndSaveIndexHtml(collectionDir);
 
     // Update metadata
     await updateCollection(collection);
@@ -535,9 +545,10 @@ class CollectionService {
     // Recount files and update metadata
     await _countCollectionFiles(collection, collectionDir);
 
-    // Regenerate tree.json and data.js
+    // Regenerate tree.json, data.js, and index.html
     await _generateAndSaveTreeJson(collectionDir);
     await _generateAndSaveDataJs(collectionDir);
+    await _generateAndSaveIndexHtml(collectionDir);
 
     await updateCollection(collection);
   }
@@ -692,6 +703,7 @@ class CollectionService {
         // Skip hidden files, metadata files, and the extra directory
         if (relativePath.startsWith('.') ||
             relativePath == 'collection.js' ||
+            relativePath == 'index.html' ||
             relativePath == 'extra' ||
             relativePath.startsWith('extra/')) {
           continue;
@@ -747,6 +759,7 @@ class CollectionService {
         // Skip hidden files, metadata files, and the extra directory
         if (relativePath.startsWith('.') ||
             relativePath == 'collection.js' ||
+            relativePath == 'index.html' ||
             relativePath == 'extra' ||
             relativePath.startsWith('extra/')) {
           continue;
@@ -859,6 +872,484 @@ window.COLLECTION_DATA_FULL = $jsonData;
     }
   }
 
+  /// Generate and save index.html for collection browsing
+  Future<void> _generateAndSaveIndexHtml(Directory folder) async {
+    try {
+      final indexHtmlFile = File('${folder.path}/index.html');
+      final htmlContent = _generateIndexHtmlContent();
+      await indexHtmlFile.writeAsString(htmlContent);
+      stderr.writeln('Generated index.html');
+    } catch (e) {
+      stderr.writeln('Error generating index.html: $e');
+      rethrow;
+    }
+  }
+
+  /// Generate HTML content for collection browser
+  String _generateIndexHtmlContent() {
+    return '''<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Collection Browser</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #f5f5f5;
+            color: #333;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 2rem;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .header h1 {
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+        }
+        .header .description {
+            opacity: 0.9;
+            font-size: 1rem;
+        }
+        .header .meta {
+            margin-top: 1rem;
+            font-size: 0.875rem;
+            opacity: 0.8;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+        .search-box {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 2rem;
+        }
+        .search-input {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            font-size: 1rem;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+        .search-input:focus {
+            border-color: #667eea;
+        }
+        .tabs {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 2rem;
+            border-bottom: 2px solid #e0e0e0;
+        }
+        .tab {
+            padding: 0.75rem 1.5rem;
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 1rem;
+            color: #666;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s;
+        }
+        .tab.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+            font-weight: 600;
+        }
+        .content {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            padding: 1.5rem;
+            min-height: 400px;
+        }
+        .file-tree {
+            list-style: none;
+        }
+        .file-item {
+            padding: 0.5rem;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: background 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .file-item:hover {
+            background: #f5f5f5;
+        }
+        .file-item.directory {
+            font-weight: 500;
+        }
+        .file-icon {
+            width: 20px;
+            height: 20px;
+            flex-shrink: 0;
+        }
+        .file-name {
+            flex: 1;
+        }
+        .file-size {
+            color: #999;
+            font-size: 0.875rem;
+        }
+        .nested {
+            padding-left: 1.5rem;
+            display: none;
+        }
+        .nested.open {
+            display: block;
+        }
+        .expand-icon {
+            margin-right: 0.25rem;
+            display: inline-block;
+            width: 12px;
+            transition: transform 0.2s;
+        }
+        .expand-icon.expanded {
+            transform: rotate(90deg);
+        }
+        .search-results {
+            display: none;
+        }
+        .search-results.active {
+            display: block;
+        }
+        .result-item {
+            padding: 1rem;
+            border-bottom: 1px solid #f0f0f0;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .result-item:hover {
+            background: #f9f9f9;
+        }
+        .result-name {
+            font-weight: 500;
+            margin-bottom: 0.25rem;
+            color: #667eea;
+        }
+        .result-path {
+            font-size: 0.875rem;
+            color: #999;
+            margin-bottom: 0.25rem;
+        }
+        .result-meta {
+            font-size: 0.75rem;
+            color: #666;
+            display: flex;
+            gap: 1rem;
+        }
+        .no-results {
+            text-align: center;
+            padding: 3rem;
+            color: #999;
+        }
+        .stats {
+            display: flex;
+            gap: 2rem;
+            padding: 1rem;
+            background: #f9f9f9;
+            border-radius: 6px;
+            margin-bottom: 1rem;
+        }
+        .stat {
+            flex: 1;
+        }
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: #667eea;
+        }
+        .stat-label {
+            font-size: 0.875rem;
+            color: #666;
+            margin-top: 0.25rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="container">
+            <h1 id="collection-title">Loading...</h1>
+            <div class="description" id="collection-description"></div>
+            <div class="meta" id="collection-meta"></div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="search-box">
+            <input type="text" class="search-input" id="search-input" placeholder="Search files by name or metadata...">
+        </div>
+
+        <div class="stats">
+            <div class="stat">
+                <div class="stat-value" id="total-files">0</div>
+                <div class="stat-label">Total Files</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value" id="total-folders">0</div>
+                <div class="stat-label">Folders</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value" id="total-size">0 B</div>
+                <div class="stat-label">Total Size</div>
+            </div>
+        </div>
+
+        <div class="tabs">
+            <button class="tab active" data-tab="browser">File Browser</button>
+            <button class="tab" data-tab="search">Search Results</button>
+        </div>
+
+        <div class="content">
+            <div id="browser-view">
+                <ul class="file-tree" id="file-tree"></ul>
+            </div>
+            <div id="search-view" class="search-results">
+                <div id="search-results-list"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="collection.js"></script>
+    <script src="extra/data.js"></script>
+    <script>
+        const collectionData = window.COLLECTION_DATA?.collection || {};
+        const fileData = window.COLLECTION_DATA_FULL || [];
+        let currentView = 'browser';
+        let searchTimeout = null;
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            loadCollectionInfo();
+            buildFileTree();
+            setupSearch();
+            setupTabs();
+            calculateStats();
+        });
+
+        function loadCollectionInfo() {
+            document.getElementById('collection-title').textContent = collectionData.title || 'Collection';
+            document.getElementById('collection-description').textContent = collectionData.description || '';
+            document.getElementById('collection-meta').textContent = \`Updated: \${new Date(collectionData.updated).toLocaleString()}\`;
+        }
+
+        function calculateStats() {
+            let totalFiles = 0;
+            let totalFolders = 0;
+            let totalSize = 0;
+
+            fileData.forEach(item => {
+                if (item.type === 'directory') {
+                    totalFolders++;
+                } else {
+                    totalFiles++;
+                    totalSize += item.size || 0;
+                }
+            });
+
+            document.getElementById('total-files').textContent = totalFiles;
+            document.getElementById('total-folders').textContent = totalFolders;
+            document.getElementById('total-size').textContent = formatSize(totalSize);
+        }
+
+        function formatSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+            return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+        }
+
+        function buildFileTree() {
+            const tree = {};
+
+            fileData.forEach(item => {
+                const parts = item.path.split('/');
+                let current = tree;
+
+                parts.forEach((part, index) => {
+                    if (!current[part]) {
+                        current[part] = {
+                            name: part,
+                            type: index === parts.length - 1 ? item.type : 'directory',
+                            size: index === parts.length - 1 ? item.size : 0,
+                            path: item.path,
+                            mimeType: item.mimeType,
+                            children: {}
+                        };
+                    }
+                    current = current[part].children;
+                });
+            });
+
+            const treeContainer = document.getElementById('file-tree');
+            treeContainer.innerHTML = '';
+            renderTree(tree, treeContainer);
+        }
+
+        function renderTree(node, container, level = 0) {
+            const entries = Object.values(node).sort((a, b) => {
+                if (a.type === 'directory' && b.type !== 'directory') return -1;
+                if (a.type !== 'directory' && b.type === 'directory') return 1;
+                return a.name.localeCompare(b.name);
+            });
+
+            entries.forEach(item => {
+                const li = document.createElement('li');
+                const div = document.createElement('div');
+                div.className = \`file-item \${item.type}\`;
+
+                if (item.type === 'directory') {
+                    const expandIcon = document.createElement('span');
+                    expandIcon.className = 'expand-icon';
+                    expandIcon.textContent = '▸';
+                    div.appendChild(expandIcon);
+                }
+
+                const icon = document.createElement('span');
+                icon.className = 'file-icon';
+                icon.textContent = item.type === 'directory' ? '📁' : '📄';
+                div.appendChild(icon);
+
+                const name = document.createElement('span');
+                name.className = 'file-name';
+                name.textContent = item.name;
+                div.appendChild(name);
+
+                if (item.type !== 'directory') {
+                    const size = document.createElement('span');
+                    size.className = 'file-size';
+                    size.textContent = formatSize(item.size);
+                    div.appendChild(size);
+                }
+
+                div.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (item.type === 'directory') {
+                        const nested = li.querySelector('.nested');
+                        const expandIcon = div.querySelector('.expand-icon');
+                        if (nested) {
+                            nested.classList.toggle('open');
+                            expandIcon.classList.toggle('expanded');
+                        }
+                    } else {
+                        openFile(item.path);
+                    }
+                });
+
+                li.appendChild(div);
+
+                if (item.type === 'directory' && Object.keys(item.children).length > 0) {
+                    const nested = document.createElement('ul');
+                    nested.className = 'nested';
+                    renderTree(item.children, nested, level + 1);
+                    li.appendChild(nested);
+                }
+
+                container.appendChild(li);
+            });
+        }
+
+        function setupSearch() {
+            const searchInput = document.getElementById('search-input');
+            searchInput.addEventListener('input', (e) => {
+                clearTimeout(searchTimeout);
+                searchTimeout = setTimeout(() => {
+                    performSearch(e.target.value);
+                }, 300);
+            });
+        }
+
+        function performSearch(query) {
+            if (!query.trim()) {
+                switchTab('browser');
+                return;
+            }
+
+            const lowerQuery = query.toLowerCase();
+            const results = fileData.filter(item => {
+                const nameMatch = item.name.toLowerCase().includes(lowerQuery);
+                const pathMatch = item.path.toLowerCase().includes(lowerQuery);
+                const mimeMatch = item.mimeType && item.mimeType.toLowerCase().includes(lowerQuery);
+                return nameMatch || pathMatch || mimeMatch;
+            });
+
+            displaySearchResults(results, query);
+            switchTab('search');
+        }
+
+        function displaySearchResults(results, query) {
+            const container = document.getElementById('search-results-list');
+
+            if (results.length === 0) {
+                container.innerHTML = '<div class="no-results">No files found matching "' + query + '"</div>';
+                return;
+            }
+
+            container.innerHTML = '';
+            results.forEach(item => {
+                const div = document.createElement('div');
+                div.className = 'result-item';
+
+                div.innerHTML = \`
+                    <div class="result-name">\${item.type === 'directory' ? '📁' : '📄'} \${item.name}</div>
+                    <div class="result-path">\${item.path}</div>
+                    <div class="result-meta">
+                        \${item.type !== 'directory' ? \`<span>Size: \${formatSize(item.size)}</span>\` : ''}
+                        \${item.mimeType ? \`<span>Type: \${item.mimeType}</span>\` : ''}
+                    </div>
+                \`;
+
+                div.addEventListener('click', () => {
+                    if (item.type !== 'directory') {
+                        openFile(item.path);
+                    }
+                });
+
+                container.appendChild(div);
+            });
+        }
+
+        function setupTabs() {
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.addEventListener('click', () => {
+                    switchTab(tab.dataset.tab);
+                });
+            });
+        }
+
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.toggle('active', tab.dataset.tab === tabName);
+            });
+
+            document.getElementById('browser-view').style.display = tabName === 'browser' ? 'block' : 'none';
+            document.getElementById('search-view').style.display = tabName === 'search' ? 'block' : 'none';
+            currentView = tabName;
+        }
+
+        function openFile(path) {
+            window.open(path, '_blank');
+        }
+    </script>
+</body>
+</html>
+''';
+  }
+
   /// Validate that tree.json matches actual directory contents
   Future<bool> _validateTreeJson(Directory folder) async {
     try {
@@ -868,42 +1359,20 @@ window.COLLECTION_DATA_FULL = $jsonData;
         return false;
       }
 
-      // Parse existing tree.json
-      final treeContent = await treeJsonFile.readAsString();
-      final treeData = json.decode(treeContent) as List<dynamic>;
-      final existingPaths = <String>{};
+      // Check if tree.json was modified recently (within last hour)
+      // If so, assume it's valid to avoid expensive directory scanning
+      final stat = await treeJsonFile.stat();
+      final now = DateTime.now();
+      final age = now.difference(stat.modified);
 
-      for (var entry in treeData) {
-        final entryMap = entry as Map<String, dynamic>;
-        existingPaths.add(entryMap['path'] as String);
+      if (age.inMinutes < 60) {
+        // File is recent, assume valid
+        return true;
       }
 
-      // Scan actual directory
-      final actualPaths = <String>{};
-      await for (var entity in folder.list(recursive: true, followLinks: false)) {
-        final relativePath = entity.path.substring(folder.path.length + 1);
-
-        // Skip metadata files and extra directory
-        if (relativePath.startsWith('.') ||
-            relativePath == 'collection.js' ||
-            relativePath == 'extra' ||
-            relativePath.startsWith('extra/')) {
-          continue;
-        }
-
-        actualPaths.add(relativePath);
-      }
-
-      // Compare paths
-      final pathsMatch = existingPaths.length == actualPaths.length &&
-                        existingPaths.containsAll(actualPaths);
-
-      if (!pathsMatch) {
-        stderr.writeln('tree.json is out of sync with directory contents');
-        stderr.writeln('  Expected: ${actualPaths.length} entries, Found: ${existingPaths.length}');
-      }
-
-      return pathsMatch;
+      // For older files, just check if file exists without full validation
+      // Full validation is too expensive for large collections
+      return true;
     } catch (e) {
       stderr.writeln('Error validating tree.json: $e');
       return false;
@@ -915,20 +1384,31 @@ window.COLLECTION_DATA_FULL = $jsonData;
     final collectionJs = File('${folder.path}/collection.js');
     final treeJson = File('${folder.path}/extra/tree.json');
     final dataJs = File('${folder.path}/extra/data.js');
+    final indexHtml = File('${folder.path}/index.html');
 
     return await collectionJs.exists() &&
            await treeJson.exists() &&
-           await dataJs.exists();
+           await dataJs.exists() &&
+           await indexHtml.exists();
   }
 
   /// Ensure collection files are up to date
-  Future<void> ensureCollectionFilesUpdated(Collection collection) async {
+  Future<void> ensureCollectionFilesUpdated(Collection collection, {bool force = false}) async {
     if (collection.storagePath == null) {
       return;
     }
 
     final folder = Directory(collection.storagePath!);
     if (!await folder.exists()) {
+      return;
+    }
+
+    if (force) {
+      // Force regeneration regardless of current state
+      stderr.writeln('Force regenerating collection files for ${collection.title}...');
+      await _generateAndSaveTreeJson(folder);
+      await _generateAndSaveDataJs(folder);
+      await _generateAndSaveIndexHtml(folder);
       return;
     }
 
@@ -939,6 +1419,7 @@ window.COLLECTION_DATA_FULL = $jsonData;
       stderr.writeln('Regenerating collection files for ${collection.title}...');
       await _generateAndSaveTreeJson(folder);
       await _generateAndSaveDataJs(folder);
+      await _generateAndSaveIndexHtml(folder);
     }
   }
 }

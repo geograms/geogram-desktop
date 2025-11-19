@@ -1452,12 +1452,41 @@ class _CollectionBrowserPageState extends State<CollectionBrowserPage> {
     }
   }
 
+  Future<void> _refreshCollectionFiles() async {
+    try {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_i18n.t('regenerating_collection_files'))),
+      );
+
+      // Force regeneration of all collection files
+      await _collectionService.ensureCollectionFilesUpdated(widget.collection, force: true);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_i18n.t('collection_files_regenerated'))),
+        );
+      }
+    } catch (e) {
+      LogService().log('Error refreshing collection files: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_i18n.t('error_regenerating_files', params: [e.toString()]))),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.collection.title),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _refreshCollectionFiles,
+            tooltip: _i18n.t('refresh_collection_files'),
+          ),
           IconButton(
             icon: const Icon(Icons.settings),
             onPressed: _editSettings,
