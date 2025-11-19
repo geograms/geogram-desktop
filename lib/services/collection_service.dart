@@ -892,233 +892,225 @@ window.COLLECTION_DATA_FULL = $jsonData;
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Collection Browser</title>
+    <title>GEOGRAM BBS v1.0</title>
     <style>
+        @font-face {
+            font-family: 'VT323';
+            font-style: normal;
+            font-weight: 400;
+            src: url(data:font/woff2;base64,d09GMgABAAAAABsMAA4AAAAAMkQAABqxAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGhYbIByCWgZgAIE8EQgKgbgkg5JXC4N0AAE2AiQDhwQGBQcgB4MbWCkjEZUcBWRfE+KW7Qwkg1bBVqxm/P/fxjZv3s/MJiGJZZVIopG0k0j1TNIgRBKhkUgiGglRySSRaFr/+b3u95zz3O85537P/c//P+f/nP/9z/mf/zv/+9//ufe///l3vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu/7vu8=) format('woff2');
+        }
+
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
 
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
+        @keyframes blink {
+            0%, 49% { opacity: 1; }
+            50%, 100% { opacity: 0; }
         }
 
-        @keyframes shimmer {
-            0% { background-position: -1000px 0; }
-            100% { background-position: 1000px 0; }
+        @keyframes scanline {
+            0% { transform: translateY(-100%); }
+            100% { transform: translateY(100%); }
+        }
+
+        @keyframes flicker {
+            0% { opacity: 0.97; }
+            50% { opacity: 1; }
+            100% { opacity: 0.97; }
+        }
+
+        @keyframes textGlow {
+            0%, 100% { text-shadow: 0 0 10px #0f0, 0 0 20px #0f0, 0 0 30px #0f0; }
+            50% { text-shadow: 0 0 15px #0f0, 0 0 25px #0f0, 0 0 35px #0f0; }
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            background-attachment: fixed;
-            color: #1a202c;
-            min-height: 100vh;
-            animation: fadeIn 0.6s ease-out;
-        }
-
-        .header {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(10px);
-            color: #1a202c;
-            padding: 2.5rem 0;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-            border-bottom: 1px solid rgba(102, 126, 234, 0.1);
-        }
-
-        .header-content {
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 0 2rem;
-        }
-
-        .header h1 {
-            font-size: 2.5rem;
-            font-weight: 700;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            margin-bottom: 0.5rem;
-            letter-spacing: -0.5px;
-        }
-
-        .header .description {
-            color: #4a5568;
-            font-size: 1.1rem;
-            line-height: 1.6;
-            margin-bottom: 0.75rem;
-        }
-
-        .header .meta {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            color: #718096;
-            font-size: 0.9rem;
-        }
-
-        .meta-icon {
-            opacity: 0.7;
-        }
-
-        .stats-container {
-            max-width: 1400px;
-            margin: -3rem auto 0;
-            padding: 0 2rem;
+            font-family: 'Courier New', 'VT323', monospace;
+            background: #000;
+            color: #0f0;
+            line-height: 1.4;
+            overflow-x: hidden;
             position: relative;
-            z-index: 10;
         }
 
-        .stats {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 1.5rem;
-            margin-bottom: 2rem;
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: repeating-linear-gradient(
+                0deg,
+                rgba(0, 0, 0, 0.15),
+                rgba(0, 0, 0, 0.15) 1px,
+                transparent 1px,
+                transparent 2px
+            );
+            pointer-events: none;
+            z-index: 1000;
+            animation: flicker 0.15s infinite;
         }
 
-        .stat-card {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(10px);
-            border-radius: 16px;
-            padding: 2rem;
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.8);
-            transition: transform 0.3s ease, box-shadow 0.3s ease;
-            animation: fadeIn 0.6s ease-out backwards;
-        }
-
-        .stat-card:nth-child(1) { animation-delay: 0.1s; }
-        .stat-card:nth-child(2) { animation-delay: 0.2s; }
-        .stat-card:nth-child(3) { animation-delay: 0.3s; }
-
-        .stat-card:hover {
-            transform: translateY(-4px);
-            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-        }
-
-        .stat-icon {
-            font-size: 2.5rem;
-            margin-bottom: 1rem;
-            display: inline-block;
-        }
-
-        .stat-value {
-            font-size: 2.25rem;
-            font-weight: 700;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            margin-bottom: 0.5rem;
-        }
-
-        .stat-label {
-            font-size: 0.95rem;
-            color: #718096;
-            font-weight: 500;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
+        body::after {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 3px;
+            background: rgba(0, 255, 0, 0.1);
+            animation: scanline 8s linear infinite;
+            pointer-events: none;
+            z-index: 999;
         }
 
         .container {
-            max-width: 1400px;
+            max-width: 1200px;
             margin: 0 auto;
-            padding: 2rem;
+            padding: 20px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .ascii-art {
+            color: #0f0;
+            text-shadow: 0 0 10px #0f0;
+            font-size: 10px;
+            line-height: 8px;
+            white-space: pre;
+            margin-bottom: 20px;
+            animation: textGlow 2s ease-in-out infinite;
+        }
+
+        .header {
+            border: 2px solid #0f0;
+            padding: 15px;
+            margin-bottom: 20px;
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.3);
+        }
+
+        .header h1 {
+            color: #0ff;
+            text-shadow: 0 0 10px #0ff, 0 0 20px #0ff;
+            font-size: 24px;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+        }
+
+        .header .subtitle {
+            color: #0f0;
+            font-size: 14px;
+            margin-bottom: 5px;
+        }
+
+        .header .meta {
+            color: #ff0;
+            font-size: 12px;
+        }
+
+        .stats-box {
+            border: 1px solid #0f0;
+            padding: 10px;
+            margin-bottom: 15px;
+            background: rgba(0, 255, 0, 0.03);
+        }
+
+        .stats {
+            display: flex;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        .stat {
+            flex: 1;
+            min-width: 200px;
+            border: 1px dashed #0f0;
+            padding: 10px;
+            text-align: center;
+        }
+
+        .stat-label {
+            color: #f0f;
+            font-size: 11px;
+            text-transform: uppercase;
+            margin-bottom: 5px;
+        }
+
+        .stat-value {
+            color: #0ff;
+            font-size: 20px;
+            text-shadow: 0 0 10px #0ff;
+            font-weight: bold;
         }
 
         .search-box {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(10px);
-            padding: 1rem;
-            border-radius: 16px;
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.8);
-            margin-bottom: 2rem;
-            animation: fadeIn 0.6s ease-out 0.4s backwards;
+            border: 1px solid #0f0;
+            padding: 10px;
+            margin-bottom: 15px;
+            background: rgba(0, 255, 0, 0.03);
         }
 
-        .search-wrapper {
-            position: relative;
-            display: flex;
-            align-items: center;
-        }
-
-        .search-icon {
-            position: absolute;
-            left: 1.25rem;
-            color: #a0aec0;
-            font-size: 1.25rem;
+        .search-prompt {
+            color: #ff0;
+            margin-bottom: 5px;
         }
 
         .search-input {
             width: 100%;
-            padding: 1rem 1rem 1rem 3.5rem;
-            font-size: 1.05rem;
-            border: 2px solid transparent;
-            border-radius: 12px;
+            background: #000;
+            border: 1px solid #0f0;
+            color: #0f0;
+            padding: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
             outline: none;
-            background: #f7fafc;
-            transition: all 0.3s ease;
-            color: #2d3748;
         }
 
         .search-input:focus {
-            border-color: #667eea;
-            background: white;
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-        }
-
-        .search-input::placeholder {
-            color: #a0aec0;
+            box-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
         }
 
         .tabs {
             display: flex;
-            gap: 0.5rem;
-            margin-bottom: 1.5rem;
-            background: rgba(255, 255, 255, 0.5);
-            backdrop-filter: blur(10px);
-            padding: 0.5rem;
-            border-radius: 12px;
-            animation: fadeIn 0.6s ease-out 0.5s backwards;
+            gap: 2px;
+            margin-bottom: 15px;
         }
 
         .tab {
-            padding: 0.875rem 1.75rem;
-            background: transparent;
-            border: none;
+            background: #000;
+            border: 1px solid #0f0;
+            color: #0f0;
+            padding: 8px 20px;
             cursor: pointer;
-            font-size: 1rem;
-            font-weight: 500;
-            color: #4a5568;
-            border-radius: 8px;
-            transition: all 0.3s ease;
-            position: relative;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            text-transform: uppercase;
+            transition: all 0.2s;
         }
 
         .tab:hover {
-            background: rgba(255, 255, 255, 0.6);
-            color: #667eea;
+            background: rgba(0, 255, 0, 0.1);
+            box-shadow: 0 0 10px rgba(0, 255, 0, 0.3);
         }
 
         .tab.active {
-            background: white;
-            color: #667eea;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            background: rgba(0, 255, 0, 0.2);
+            color: #0ff;
+            box-shadow: 0 0 15px rgba(0, 255, 0, 0.5);
         }
 
         .content {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(10px);
-            border-radius: 16px;
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.8);
-            padding: 2rem;
-            min-height: 500px;
-            animation: fadeIn 0.6s ease-out 0.6s backwards;
+            border: 2px solid #0f0;
+            padding: 15px;
+            min-height: 400px;
+            background: rgba(0, 0, 0, 0.8);
+            box-shadow: inset 0 0 20px rgba(0, 255, 0, 0.1);
         }
 
         .file-tree {
@@ -1126,82 +1118,90 @@ window.COLLECTION_DATA_FULL = $jsonData;
         }
 
         .file-item {
-            padding: 0.75rem 1rem;
+            padding: 5px 0;
             cursor: pointer;
-            border-radius: 8px;
-            transition: all 0.2s ease;
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            margin: 0.25rem 0;
+            transition: all 0.2s;
+            position: relative;
+            padding-left: 5px;
         }
 
         .file-item:hover {
-            background: linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(118, 75, 162, 0.05) 100%);
-            transform: translateX(4px);
+            background: rgba(0, 255, 0, 0.1);
+            padding-left: 10px;
+        }
+
+        .file-item:hover::before {
+            content: '>';
+            position: absolute;
+            left: 0;
+            color: #ff0;
         }
 
         .file-item.directory {
-            font-weight: 600;
-        }
-
-        .file-icon {
-            font-size: 1.5rem;
-            flex-shrink: 0;
-            transition: transform 0.2s ease;
-        }
-
-        .file-item:hover .file-icon {
-            transform: scale(1.1);
+            color: #0ff;
         }
 
         .file-name {
-            flex: 1;
-            color: #2d3748;
-            font-size: 0.95rem;
-        }
-
-        .file-type-badge {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 0.25rem 0.75rem;
-            border-radius: 6px;
-            font-size: 0.75rem;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
+            display: inline-block;
         }
 
         .file-size {
-            color: #a0aec0;
-            font-size: 0.875rem;
-            font-weight: 500;
-            min-width: 80px;
-            text-align: right;
+            color: #f0f;
+            float: right;
+            font-size: 12px;
         }
 
         .nested {
-            padding-left: 2rem;
+            padding-left: 20px;
             display: none;
-            overflow: hidden;
+            border-left: 1px dotted #0f0;
+            margin-left: 10px;
         }
 
         .nested.open {
             display: block;
-            animation: fadeIn 0.3s ease-out;
         }
 
         .expand-icon {
-            margin-right: 0.25rem;
             display: inline-block;
-            font-size: 0.75rem;
-            transition: transform 0.3s ease;
-            color: #a0aec0;
+            width: 15px;
+            color: #ff0;
         }
 
-        .expand-icon.expanded {
-            transform: rotate(90deg);
-            color: #667eea;
+        .result-item {
+            padding: 10px;
+            border-bottom: 1px dotted #0f0;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .result-item:hover {
+            background: rgba(0, 255, 0, 0.1);
+            padding-left: 15px;
+        }
+
+        .result-name {
+            color: #0ff;
+            margin-bottom: 5px;
+            font-size: 14px;
+        }
+
+        .result-path {
+            color: #ff0;
+            font-size: 12px;
+            margin-bottom: 3px;
+        }
+
+        .result-meta {
+            color: #f0f;
+            font-size: 11px;
+        }
+
+        .no-results {
+            text-align: center;
+            padding: 40px;
+            color: #f00;
+            border: 1px dashed #f00;
         }
 
         .search-results {
@@ -1212,165 +1212,87 @@ window.COLLECTION_DATA_FULL = $jsonData;
             display: block;
         }
 
-        .result-item {
-            padding: 1.25rem;
-            border-bottom: 1px solid #e2e8f0;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            border-radius: 8px;
-            margin-bottom: 0.5rem;
-        }
-
-        .result-item:hover {
-            background: linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(118, 75, 162, 0.05) 100%);
-            border-color: #667eea;
-            transform: translateX(4px);
-        }
-
-        .result-name {
-            font-weight: 600;
-            font-size: 1.05rem;
-            margin-bottom: 0.5rem;
-            color: #667eea;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
-        .result-path {
-            font-size: 0.875rem;
-            color: #718096;
-            margin-bottom: 0.5rem;
-            font-family: 'Courier New', monospace;
-        }
-
-        .result-meta {
-            font-size: 0.8rem;
-            color: #a0aec0;
-            display: flex;
-            gap: 1.5rem;
-            flex-wrap: wrap;
-        }
-
-        .result-meta span {
-            display: flex;
-            align-items: center;
-            gap: 0.25rem;
-        }
-
-        .no-results {
-            text-align: center;
-            padding: 4rem 2rem;
-            color: #a0aec0;
-        }
-
-        .no-results-icon {
-            font-size: 4rem;
-            margin-bottom: 1rem;
-            opacity: 0.5;
-        }
-
-        .no-results-text {
-            font-size: 1.25rem;
-            font-weight: 500;
-            margin-bottom: 0.5rem;
-        }
-
-        .no-results-hint {
-            font-size: 0.95rem;
-            opacity: 0.7;
-        }
-
         .footer {
-            max-width: 1400px;
-            margin: 3rem auto 0;
-            padding: 2rem;
+            margin-top: 20px;
+            border-top: 1px solid #0f0;
+            padding-top: 10px;
             text-align: center;
-            color: rgba(255, 255, 255, 0.8);
-            font-size: 0.9rem;
+            color: #0f0;
+            font-size: 11px;
         }
 
         .footer a {
-            color: white;
+            color: #0ff;
             text-decoration: none;
-            font-weight: 600;
-            transition: opacity 0.3s ease;
         }
 
         .footer a:hover {
-            opacity: 0.8;
+            text-decoration: underline;
+            text-shadow: 0 0 10px #0ff;
+        }
+
+        .blink {
+            animation: blink 1s step-start infinite;
         }
 
         @media (max-width: 768px) {
-            .header h1 {
-                font-size: 2rem;
+            .ascii-art {
+                font-size: 6px;
+                line-height: 5px;
             }
 
-            .stats {
-                grid-template-columns: 1fr;
+            .stat {
+                min-width: 100%;
             }
 
-            .stat-card {
-                padding: 1.5rem;
-            }
-
-            .stat-value {
-                font-size: 1.75rem;
-            }
-
-            .container {
-                padding: 1rem;
-            }
-
-            .content {
-                padding: 1.5rem;
+            .tabs {
+                flex-direction: column;
             }
         }
     </style>
 </head>
 <body>
-    <div class="header">
-        <div class="header-content">
-            <h1 id="collection-title">Loading...</h1>
-            <div class="description" id="collection-description"></div>
-            <div class="meta">
-                <span class="meta-icon">🕒</span>
-                <span id="collection-meta"></span>
-            </div>
-        </div>
-    </div>
-
-    <div class="stats-container">
-        <div class="stats">
-            <div class="stat-card">
-                <div class="stat-icon">📄</div>
-                <div class="stat-value" id="total-files">0</div>
-                <div class="stat-label">Total Files</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-icon">📁</div>
-                <div class="stat-value" id="total-folders">0</div>
-                <div class="stat-label">Folders</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-icon">💾</div>
-                <div class="stat-value" id="total-size">0 B</div>
-                <div class="stat-label">Total Size</div>
-            </div>
-        </div>
-    </div>
-
     <div class="container">
-        <div class="search-box">
-            <div class="search-wrapper">
-                <span class="search-icon">🔍</span>
-                <input type="text" class="search-input" id="search-input" placeholder="Search files, folders, or file types...">
+        <pre class="ascii-art">
+ ██████╗ ███████╗ ██████╗  ██████╗ ██████╗  █████╗ ███╗   ███╗    ██████╗ ██████╗ ███████╗
+██╔════╝ ██╔════╝██╔═══██╗██╔════╝ ██╔══██╗██╔══██╗████╗ ████║    ██╔══██╗██╔══██╗██╔════╝
+██║  ███╗█████╗  ██║   ██║██║  ███╗██████╔╝███████║██╔████╔██║    ██████╔╝██████╔╝███████╗
+██║   ██║██╔══╝  ██║   ██║██║   ██║██╔══██╗██╔══██║██║╚██╔╝██║    ██╔══██╗██╔══██╗╚════██║
+╚██████╔╝███████╗╚██████╔╝╚██████╔╝██║  ██║██║  ██║██║ ╚═╝ ██║    ██████╔╝██████╔╝███████║
+ ╚═════╝ ╚══════╝ ╚═════╝  ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝     ╚═╝    ╚═════╝ ╚═════╝ ╚══════╝
+        </pre>
+
+        <div class="header">
+            <h1>[<span class="blink">█</span>] <span id="collection-title">LOADING SYSTEM...</span></h1>
+            <div class="subtitle" id="collection-description"></div>
+            <div class="meta">SYSTEM TIME: <span id="collection-meta"></span></div>
+        </div>
+
+        <div class="stats-box">
+            <div class="stats">
+                <div class="stat">
+                    <div class="stat-label">▒ TOTAL FILES ▒</div>
+                    <div class="stat-value" id="total-files">0</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-label">▒ DIRECTORIES ▒</div>
+                    <div class="stat-value" id="total-folders">0</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-label">▒ TOTAL BYTES ▒</div>
+                    <div class="stat-value" id="total-size">0 B</div>
+                </div>
             </div>
+        </div>
+
+        <div class="search-box">
+            <div class="search-prompt">SEARCH COMMAND [?]:</div>
+            <input type="text" class="search-input" id="search-input" placeholder="Enter search query...">
         </div>
 
         <div class="tabs">
-            <button class="tab active" data-tab="browser">📂 File Browser</button>
-            <button class="tab" data-tab="search">🔍 Search Results</button>
+            <button class="tab active" data-tab="browser">[F1] FILE BROWSER</button>
+            <button class="tab" data-tab="search">[F2] SEARCH RESULTS</button>
         </div>
 
         <div class="content">
@@ -1381,10 +1303,13 @@ window.COLLECTION_DATA_FULL = $jsonData;
                 <div id="search-results-list"></div>
             </div>
         </div>
-    </div>
 
-    <div class="footer">
-        Powered by <a href="https://github.com/geograms/geogram" target="_blank">Geogram</a> • Resilient, Decentralized Communication
+        <div class="footer">
+            ┌────────────────────────────────────────────────────────────────┐<br>
+            │ GEOGRAM RESILIENT NETWORK v1.0 (c) 2025 - UNDERGROUND EDITION │<br>
+            │ NO CARRIER DETECTED - OFFLINE MODE ACTIVE - STAY UNDETECTED    │<br>
+            └────────────────────────────────────────────────────────────────┘
+        </div>
     </div>
 
     <script src="collection.js"></script>
@@ -1411,40 +1336,33 @@ window.COLLECTION_DATA_FULL = $jsonData;
         }
 
         function getFileIcon(item) {
-            if (item.type === 'directory') return '📁';
+            if (item.type === 'directory') return '[DIR]';
 
             const ext = item.name.split('.').pop().toLowerCase();
             const mimeType = item.mimeType || '';
 
-            // Images
-            if (mimeType.startsWith('image/') || ['jpg', 'jpeg', 'png', 'gif', 'svg', 'webp', 'bmp'].includes(ext)) {
-                return '🖼️';
-            }
-            // Videos
-            if (mimeType.startsWith('video/') || ['mp4', 'avi', 'mov', 'mkv', 'webm'].includes(ext)) {
-                return '🎥';
-            }
-            // Audio
-            if (mimeType.startsWith('audio/') || ['mp3', 'wav', 'ogg', 'flac', 'm4a'].includes(ext)) {
-                return '🎵';
-            }
-            // Documents
-            if (['pdf'].includes(ext)) return '📕';
-            if (['doc', 'docx'].includes(ext)) return '📘';
-            if (['xls', 'xlsx'].includes(ext)) return '📗';
-            if (['ppt', 'pptx'].includes(ext)) return '📙';
-            if (['txt', 'md', 'readme'].includes(ext)) return '📝';
-
-            // Code
-            if (['js', 'ts', 'jsx', 'tsx', 'json'].includes(ext)) return '📜';
-            if (['html', 'css', 'scss'].includes(ext)) return '🌐';
-            if (['py', 'java', 'cpp', 'c', 'h', 'rs', 'go'].includes(ext)) return '⚙️';
+            // Executables and binaries
+            if (['exe', 'com', 'bat', 'sh'].includes(ext)) return '[EXE]';
 
             // Archives
-            if (['zip', 'tar', 'gz', 'rar', '7z'].includes(ext)) return '📦';
+            if (['zip', 'tar', 'gz', 'rar', '7z', 'arc', 'lzh'].includes(ext)) return '[ARC]';
+
+            // Images
+            if (mimeType.startsWith('image/') || ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'pcx'].includes(ext)) {
+                return '[IMG]';
+            }
+
+            // Documents
+            if (['txt', 'doc', 'pdf', 'nfo'].includes(ext)) return '[DOC]';
+
+            // Code/Text
+            if (['c', 'cpp', 'h', 'js', 'py', 'asm', 'bas'].includes(ext)) return '[SRC]';
+
+            // Data
+            if (['dat', 'db', 'cfg', 'ini', 'json'].includes(ext)) return '[DAT]';
 
             // Default
-            return '📄';
+            return '[FILE]';
         }
 
         function calculateStats() {
@@ -1512,16 +1430,17 @@ window.COLLECTION_DATA_FULL = $jsonData;
                 const div = document.createElement('div');
                 div.className = \`file-item \${item.type}\`;
 
+                const expandIcon = document.createElement('span');
+                expandIcon.className = 'expand-icon';
                 if (item.type === 'directory') {
-                    const expandIcon = document.createElement('span');
-                    expandIcon.className = 'expand-icon';
-                    expandIcon.textContent = '▸';
-                    div.appendChild(expandIcon);
+                    expandIcon.textContent = '+';
+                } else {
+                    expandIcon.textContent = ' ';
                 }
+                div.appendChild(expandIcon);
 
                 const icon = document.createElement('span');
-                icon.className = 'file-icon';
-                icon.textContent = getFileIcon(item);
+                icon.textContent = getFileIcon(item) + ' ';
                 div.appendChild(icon);
 
                 const name = document.createElement('span');
@@ -1534,6 +1453,11 @@ window.COLLECTION_DATA_FULL = $jsonData;
                     size.className = 'file-size';
                     size.textContent = formatSize(item.size);
                     div.appendChild(size);
+                } else {
+                    const size = document.createElement('span');
+                    size.className = 'file-size';
+                    size.textContent = '<DIR>';
+                    div.appendChild(size);
                 }
 
                 div.addEventListener('click', (e) => {
@@ -1542,8 +1466,8 @@ window.COLLECTION_DATA_FULL = $jsonData;
                         const nested = li.querySelector('.nested');
                         const expandIcon = div.querySelector('.expand-icon');
                         if (nested) {
-                            nested.classList.toggle('open');
-                            expandIcon.classList.toggle('expanded');
+                            const isOpen = nested.classList.toggle('open');
+                            expandIcon.textContent = isOpen ? '-' : '+';
                         }
                     } else {
                         openFile(item.path);
@@ -1597,9 +1521,9 @@ window.COLLECTION_DATA_FULL = $jsonData;
             if (results.length === 0) {
                 container.innerHTML = \`
                     <div class="no-results">
-                        <div class="no-results-icon">🔍</div>
-                        <div class="no-results-text">No results found</div>
-                        <div class="no-results-hint">Try searching for a different term</div>
+                        *** SEARCH FAILED ***<br><br>
+                        NO MATCHES FOUND FOR: "\${query}"<br><br>
+                        TRY AGAIN OR PRESS [ESC] TO ABORT
                     </div>
                 \`;
                 return;
@@ -1610,13 +1534,13 @@ window.COLLECTION_DATA_FULL = $jsonData;
                 const div = document.createElement('div');
                 div.className = 'result-item';
 
+                const sizeStr = item.type !== 'directory' ? formatSize(item.size) : '<DIR>';
+                const mimeStr = item.mimeType ? \` TYPE: \${item.mimeType}\` : '';
+
                 div.innerHTML = \`
                     <div class="result-name">\${getFileIcon(item)} \${item.name}</div>
-                    <div class="result-path">\${item.path}</div>
-                    <div class="result-meta">
-                        \${item.type !== 'directory' ? \`<span>📏 \${formatSize(item.size)}</span>\` : ''}
-                        \${item.mimeType ? \`<span>📋 \${item.mimeType}</span>\` : ''}
-                    </div>
+                    <div class="result-path">PATH: \${item.path}</div>
+                    <div class="result-meta">SIZE: \${sizeStr}\${mimeStr}</div>
                 \`;
 
                 div.addEventListener('click', () => {
