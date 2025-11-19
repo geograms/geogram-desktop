@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import '../services/log_service.dart';
 import '../services/profile_service.dart';
+import '../services/collection_service.dart';
 import '../util/nostr_event.dart';
 
 /// WebSocket service for relay connections
@@ -86,6 +88,16 @@ class WebSocketService {
                 LogService().log('Reason: ${data['message']}');
                 LogService().log('══════════════════════════════════════');
               }
+            } else if (data['type'] == 'COLLECTIONS_REQUEST') {
+              LogService().log('✓ Relay requested collections');
+              _handleCollectionsRequest(data['requestId'] as String?);
+            } else if (data['type'] == 'COLLECTION_FILE_REQUEST') {
+              LogService().log('✓ Relay requested collection file');
+              _handleCollectionFileRequest(
+                data['requestId'] as String?,
+                data['collectionName'] as String?,
+                data['fileName'] as String?,
+              );
             }
 
             _messageController.add(data);
@@ -135,6 +147,66 @@ class WebSocketService {
 
   /// Check if connected
   bool get isConnected => _channel != null;
+
+  /// Handle collections request from relay
+  Future<void> _handleCollectionsRequest(String? requestId) async {
+    if (requestId == null) return;
+
+    try {
+      final collections = await CollectionService().loadCollections();
+      final collectionNames = collections.map((c) => c.title).toList();
+
+      final response = {
+        'type': 'COLLECTIONS_RESPONSE',
+        'requestId': requestId,
+        'collections': collectionNames,
+      };
+
+      send(response);
+      LogService().log('Sent ${collectionNames.length} collection names to relay');
+    } catch (e) {
+      LogService().log('Error handling collections request: $e');
+    }
+  }
+
+  /// Handle collection file request from relay
+  Future<void> _handleCollectionFileRequest(
+    String? requestId,
+    String? collectionName,
+    String? fileName,
+  ) async {
+    if (requestId == null || collectionName == null || fileName == null) return;
+
+    try {
+      final collections = await CollectionService().loadCollections();
+      final collection = collections.firstWhere(
+        (c) => c.title == collectionName,
+        orElse: () => throw Exception('Collection not found: $collectionName'),
+      );
+
+      String fileContent;
+      if (fileName == 'collection') {
+        final file = File('${collection.storagePath}/collection.js');
+        fileContent = await file.readAsString();
+      } else if (fileName == 'tree-data') {
+        final file = File('${collection.storagePath}/tree-data.js');
+        fileContent = await file.readAsString();
+      } else {
+        throw Exception('Unknown file: $fileName');
+      }
+
+      final response = {
+        'type': 'COLLECTION_FILE_RESPONSE',
+        'requestId': requestId,
+        'fileContent': fileContent,
+      };
+
+      send(response);
+      LogService().log('Sent $fileName for collection $collectionName (${fileContent.length} bytes)');
+    } catch (e) {
+      LogService().log('Error handling collection file request: $e');
+    }
+  }
 
   /// Cleanup
   void dispose() {
