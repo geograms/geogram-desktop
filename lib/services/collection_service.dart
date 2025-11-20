@@ -218,37 +218,60 @@ class CollectionService {
       // Store keys in config
       await _configService.storeCollectionKeys(keys);
 
-      // Sanitize folder name
-      String folderName = title
-          .replaceAll(' ', '_')
-          .toLowerCase()
-          .replaceAll(RegExp(r'[^a-z0-9_-]'), '_');
+      // Determine folder name based on type
+      String folderName;
+      String rootPath;
 
-      // Truncate to 50 characters
-      if (folderName.length > 50) {
-        folderName = folderName.substring(0, 50);
+      if (type != 'files') {
+        // For non-files types (forum, chat, www), use the type as folder name
+        // and always use default collections directory
+        folderName = type;
+        rootPath = _collectionsDir!.path;
+
+        stderr.writeln('Using fixed folder name for $type: $folderName');
+
+        // Check if this type already exists
+        final collectionFolder = Directory('$rootPath/$folderName');
+        if (await collectionFolder.exists()) {
+          throw Exception('A $type collection already exists');
+        }
+      } else {
+        // For files type, sanitize the title as folder name
+        folderName = title
+            .replaceAll(' ', '_')
+            .toLowerCase()
+            .replaceAll(RegExp(r'[^a-z0-9_-]'), '_');
+
+        // Truncate to 50 characters
+        if (folderName.length > 50) {
+          folderName = folderName.substring(0, 50);
+        }
+
+        // Remove trailing underscores
+        folderName = folderName.replaceAll(RegExp(r'_+$'), '');
+
+        // Ensure folder name is not empty
+        if (folderName.isEmpty) {
+          folderName = 'collection';
+        }
+
+        stderr.writeln('Sanitized folder name: $folderName');
+
+        // Use custom root path if provided, otherwise default
+        rootPath = customRootPath ?? _collectionsDir!.path;
+        stderr.writeln('Using root path: $rootPath');
       }
 
-      // Remove trailing underscores
-      folderName = folderName.replaceAll(RegExp(r'_+$'), '');
-
-      // Ensure folder name is not empty
-      if (folderName.isEmpty) {
-        folderName = 'collection';
-      }
-
-      stderr.writeln('Sanitized folder name: $folderName');
-
-      // Determine root path
-      final rootPath = customRootPath ?? _collectionsDir!.path;
-      stderr.writeln('Using root path: $rootPath');
-
-      // Find unique folder name
+      // Create folder (with uniqueness check for files type only)
       var collectionFolder = Directory('$rootPath/$folderName');
-      int counter = 1;
-      while (await collectionFolder.exists()) {
-        collectionFolder = Directory('$rootPath/${folderName}_$counter');
-        counter++;
+
+      if (type == 'files') {
+        // Find unique folder name for files type
+        int counter = 1;
+        while (await collectionFolder.exists()) {
+          collectionFolder = Directory('$rootPath/${folderName}_$counter');
+          counter++;
+        }
       }
 
       stderr.writeln('Creating folder: ${collectionFolder.path}');

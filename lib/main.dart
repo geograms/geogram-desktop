@@ -592,6 +592,27 @@ class _CreateCollectionDialogState extends State<_CreateCollectionDialog> {
   bool _useAutoFolder = true;
   String? _selectedFolderPath;
   String _collectionType = 'files';
+  Set<String> _existingTypes = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _checkExistingTypes();
+  }
+
+  Future<void> _checkExistingTypes() async {
+    try {
+      final collections = await CollectionService().getCollections();
+      setState(() {
+        _existingTypes = collections
+            .where((c) => c.type != 'files')
+            .map((c) => c.type)
+            .toSet();
+      });
+    } catch (e) {
+      LogService().log('Error checking existing types: $e');
+    }
+  }
 
   @override
   void dispose() {
@@ -632,11 +653,22 @@ class _CreateCollectionDialogState extends State<_CreateCollectionDialog> {
       return;
     }
 
-    if (!_useAutoFolder && _selectedFolderPath == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select a root folder')),
-      );
-      return;
+    // For non-files types, validate
+    if (_collectionType != 'files') {
+      if (_existingTypes.contains(_collectionType)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('A ${_collectionType} collection already exists')),
+        );
+        return;
+      }
+    } else {
+      // Only validate folder selection for files type
+      if (!_useAutoFolder && _selectedFolderPath == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please select a root folder')),
+        );
+        return;
+      }
     }
 
     setState(() => _isCreating = true);
@@ -648,7 +680,9 @@ class _CreateCollectionDialogState extends State<_CreateCollectionDialog> {
         title: title,
         description: _descriptionController.text.trim(),
         type: _collectionType,
-        customRootPath: _useAutoFolder ? null : _selectedFolderPath,
+        customRootPath: _collectionType == 'files'
+            ? (_useAutoFolder ? null : _selectedFolderPath)
+            : null,
       );
 
       LogService().log('Created collection: ${collection.title}');
@@ -716,11 +750,38 @@ class _CreateCollectionDialogState extends State<_CreateCollectionDialog> {
                 labelText: 'Collection Type',
                 border: OutlineInputBorder(),
               ),
-              items: const [
-                DropdownMenuItem(value: 'files', child: Text('Files')),
-                DropdownMenuItem(value: 'forum', child: Text('Forum')),
-                DropdownMenuItem(value: 'chat', child: Text('Chat')),
-                DropdownMenuItem(value: 'www', child: Text('Website')),
+              items: [
+                const DropdownMenuItem(value: 'files', child: Text('Files')),
+                DropdownMenuItem(
+                  value: 'forum',
+                  enabled: !_existingTypes.contains('forum'),
+                  child: Text(
+                    'Forum${_existingTypes.contains('forum') ? ' (already exists)' : ''}',
+                    style: _existingTypes.contains('forum')
+                        ? TextStyle(color: Colors.grey)
+                        : null,
+                  ),
+                ),
+                DropdownMenuItem(
+                  value: 'chat',
+                  enabled: !_existingTypes.contains('chat'),
+                  child: Text(
+                    'Chat${_existingTypes.contains('chat') ? ' (already exists)' : ''}',
+                    style: _existingTypes.contains('chat')
+                        ? TextStyle(color: Colors.grey)
+                        : null,
+                  ),
+                ),
+                DropdownMenuItem(
+                  value: 'www',
+                  enabled: !_existingTypes.contains('www'),
+                  child: Text(
+                    'Website${_existingTypes.contains('www') ? ' (already exists)' : ''}',
+                    style: _existingTypes.contains('www')
+                        ? TextStyle(color: Colors.grey)
+                        : null,
+                  ),
+                ),
               ],
               onChanged: _isCreating ? null : (value) {
                 if (value != null) {
@@ -731,31 +792,33 @@ class _CreateCollectionDialogState extends State<_CreateCollectionDialog> {
               },
             ),
             const SizedBox(height: 16),
-            const Divider(),
-            const SizedBox(height: 8),
-            // Auto folder checkbox
-            CheckboxListTile(
-              title: const Text('Use default folder'),
-              subtitle: Text(
-                _useAutoFolder
-                    ? '~/Documents/geogram/collections'
-                    : 'Choose custom location',
-                style: Theme.of(context).textTheme.bodySmall,
+            // Only show folder selection for 'files' type
+            if (_collectionType == 'files') ...[
+              const Divider(),
+              const SizedBox(height: 8),
+              // Auto folder checkbox
+              CheckboxListTile(
+                title: const Text('Use default folder'),
+                subtitle: Text(
+                  _useAutoFolder
+                      ? '~/Documents/geogram/collections'
+                      : 'Choose custom location',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                value: _useAutoFolder,
+                enabled: !_isCreating,
+                onChanged: (value) {
+                  setState(() {
+                    _useAutoFolder = value ?? true;
+                    if (_useAutoFolder) {
+                      _selectedFolderPath = null;
+                    }
+                  });
+                },
+                contentPadding: EdgeInsets.zero,
               ),
-              value: _useAutoFolder,
-              enabled: !_isCreating,
-              onChanged: (value) {
-                setState(() {
-                  _useAutoFolder = value ?? true;
-                  if (_useAutoFolder) {
-                    _selectedFolderPath = null;
-                  }
-                });
-              },
-              contentPadding: EdgeInsets.zero,
-            ),
-            // Folder picker (shown when auto folder is disabled)
-            if (!_useAutoFolder) ...[
+              // Folder picker (shown when auto folder is disabled)
+              if (!_useAutoFolder) ...[
               const SizedBox(height: 8),
               OutlinedButton.icon(
                 onPressed: _isCreating ? null : _pickFolder,
@@ -793,6 +856,7 @@ class _CreateCollectionDialogState extends State<_CreateCollectionDialog> {
                   ),
                 ),
               ],
+            ],
             ],
           ],
         ),
