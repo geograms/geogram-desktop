@@ -1463,6 +1463,49 @@ window.COLLECTION_DATA_FULL = $jsonData;
                     }
                     return;
                 }
+
+                // Arrow Left - Collapse selected folder
+                if (e.key === 'ArrowLeft' && document.activeElement !== searchInput) {
+                    e.preventDefault();
+                    if (navigableItems.length > 0 && navigableItems[selectedIndex]) {
+                        const item = navigableItems[selectedIndex];
+                        if (item.classList.contains('directory')) {
+                            const li = item.parentElement;
+                            const nested = li?.querySelector('.nested');
+                            if (nested && nested.classList.contains('open')) {
+                                const expandIcon = item.querySelector('.expand-icon');
+                                nested.classList.remove('open');
+                                if (expandIcon) expandIcon.textContent = '+';
+                                refreshNavigableItems();
+                            }
+                        }
+                    }
+                    return;
+                }
+
+                // Arrow Right - Expand selected folder
+                if (e.key === 'ArrowRight' && document.activeElement !== searchInput) {
+                    e.preventDefault();
+                    if (navigableItems.length > 0 && navigableItems[selectedIndex]) {
+                        const item = navigableItems[selectedIndex];
+                        if (item.classList.contains('directory')) {
+                            const li = item.parentElement;
+                            const nested = li?.querySelector('.nested');
+                            if (nested && !nested.classList.contains('open')) {
+                                const expandIcon = item.querySelector('.expand-icon');
+                                nested.classList.add('open');
+                                if (expandIcon) expandIcon.textContent = '-';
+                                // Track path
+                                const nameSpan = item.querySelector('.file-name');
+                                if (nameSpan) {
+                                    currentPath.push(nameSpan.textContent);
+                                }
+                                refreshNavigableItems();
+                            }
+                        }
+                    }
+                    return;
+                }
             });
         }
 

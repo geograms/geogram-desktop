@@ -748,9 +748,13 @@ class _CreateCollectionDialogState extends State<_CreateCollectionDialog> {
                 labelText: _i18n.t('collection_title'),
                 hintText: _i18n.t('collection_title_hint'),
                 border: const OutlineInputBorder(),
+                helperText: _collectionType != 'files'
+                    ? 'Title is auto-set based on collection type'
+                    : null,
               ),
-              autofocus: true,
-              enabled: !_isCreating,
+              autofocus: _collectionType == 'files',
+              enabled: !_isCreating && _collectionType == 'files',
+              readOnly: _collectionType != 'files',
               textInputAction: TextInputAction.next,
             ),
             const SizedBox(height: 16),
@@ -814,6 +818,17 @@ class _CreateCollectionDialogState extends State<_CreateCollectionDialog> {
                 if (value != null) {
                   setState(() {
                     _collectionType = value;
+                    // Auto-set title for non-files types
+                    if (value != 'files') {
+                      _titleController.text = value;
+                    } else {
+                      // Clear title when switching back to files type
+                      if (_titleController.text == 'www' ||
+                          _titleController.text == 'forum' ||
+                          _titleController.text == 'chat') {
+                        _titleController.text = '';
+                      }
+                    }
                   });
                 }
               },
