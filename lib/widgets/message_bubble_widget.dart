@@ -1,0 +1,353 @@
+/*
+ * Copyright (c) geogram
+ * License: Apache-2.0
+ */
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import '../models/chat_message.dart';
+import '../services/profile_service.dart';
+
+/// Widget for displaying a single chat message bubble
+class MessageBubbleWidget extends StatelessWidget {
+  final ChatMessage message;
+  final bool isGroupChat;
+  final VoidCallback? onFileOpen;
+  final VoidCallback? onLocationView;
+  final VoidCallback? onDelete;
+  final bool canDelete;
+
+  const MessageBubbleWidget({
+    Key? key,
+    required this.message,
+    this.isGroupChat = true,
+    this.onFileOpen,
+    this.onLocationView,
+    this.onDelete,
+    this.canDelete = false,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final profileService = ProfileService();
+    final currentCallsign = profileService.getProfile().callsign;
+    final isOwnMessage = message.author == currentCallsign;
+
+    return Align(
+      alignment: isOwnMessage ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.of(context).size.width * 0.7,
+        ),
+        child: Column(
+          crossAxisAlignment:
+              isOwnMessage ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          children: [
+            // Author name (only for group chats and other people's messages)
+            if (isGroupChat && !isOwnMessage)
+              Padding(
+                padding: const EdgeInsets.only(left: 12, bottom: 4),
+                child: Text(
+                  message.author,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            // Message bubble
+            InkWell(
+              onLongPress: () => _showMessageOptions(context),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: isOwnMessage
+                      ? theme.colorScheme.primaryContainer
+                      : theme.colorScheme.surfaceVariant,
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Message content
+                    if (message.content.isNotEmpty)
+                      SelectableText(
+                        message.content,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: isOwnMessage
+                              ? theme.colorScheme.onPrimaryContainer
+                              : theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    // Metadata chips
+                    if (message.metadata.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: _buildMetadataChips(context, theme, isOwnMessage),
+                      ),
+                    // Timestamp
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Text(
+                        message.displayTime,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: isOwnMessage
+                              ? theme.colorScheme.onPrimaryContainer
+                                  .withOpacity(0.7)
+                              : theme.colorScheme.onSurfaceVariant
+                                  .withOpacity(0.7),
+                          fontSize: 11,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Build metadata chips (file, location, etc.)
+  Widget _buildMetadataChips(
+      BuildContext context, ThemeData theme, bool isOwnMessage) {
+    List<Widget> chips = [];
+
+    // File attachment chip
+    if (message.hasFile) {
+      chips.add(
+        ActionChip(
+          avatar: Icon(
+            Icons.attach_file,
+            size: 16,
+            color: theme.colorScheme.primary,
+          ),
+          label: Text(
+            message.attachedFile ?? 'File',
+            style: theme.textTheme.bodySmall,
+          ),
+          onPressed: onFileOpen,
+          backgroundColor: theme.colorScheme.surface,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+      );
+    }
+
+    // Location chip
+    if (message.hasLocation) {
+      chips.add(
+        ActionChip(
+          avatar: Icon(
+            Icons.location_on,
+            size: 16,
+            color: theme.colorScheme.primary,
+          ),
+          label: Text(
+            '${message.latitude?.toStringAsFixed(4)}, ${message.longitude?.toStringAsFixed(4)}',
+            style: theme.textTheme.bodySmall,
+          ),
+          onPressed: onLocationView,
+          backgroundColor: theme.colorScheme.surface,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+      );
+    }
+
+    // Poll chip
+    if (message.isPoll) {
+      chips.add(
+        Chip(
+          avatar: Icon(
+            Icons.poll,
+            size: 16,
+            color: theme.colorScheme.primary,
+          ),
+          label: Text(
+            'Poll',
+            style: theme.textTheme.bodySmall,
+          ),
+          backgroundColor: theme.colorScheme.surface,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+      );
+    }
+
+    // Signed message indicator
+    if (message.isSigned) {
+      chips.add(
+        Chip(
+          avatar: Icon(
+            Icons.verified,
+            size: 16,
+            color: theme.colorScheme.tertiary,
+          ),
+          label: Text(
+            'Signed',
+            style: theme.textTheme.bodySmall,
+          ),
+          backgroundColor: theme.colorScheme.surface,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+      );
+    }
+
+    return Wrap(
+      spacing: 6,
+      runSpacing: 4,
+      children: chips,
+    );
+  }
+
+  /// Show message options (copy, etc.)
+  void _showMessageOptions(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.copy),
+              title: const Text('Copy message'),
+              onTap: () {
+                Clipboard.setData(ClipboardData(text: message.content));
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Message copied to clipboard'),
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.info_outline),
+              title: const Text('Message info'),
+              onTap: () {
+                Navigator.pop(context);
+                _showMessageInfo(context);
+              },
+            ),
+            if (canDelete && onDelete != null)
+              ListTile(
+                leading: Icon(
+                  Icons.delete,
+                  color: Theme.of(context).colorScheme.error,
+                ),
+                title: Text(
+                  'Delete message',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.error,
+                  ),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  _confirmDelete(context);
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Confirm deletion
+  void _confirmDelete(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Message'),
+        content: const Text('Are you sure you want to delete this message? This action cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(context);
+              if (onDelete != null) {
+                onDelete!();
+              }
+            },
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Show detailed message information
+  void _showMessageInfo(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Message Information'),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildInfoRow('Author', message.author),
+              _buildInfoRow('Timestamp', message.timestamp),
+              if (message.npub != null)
+                _buildInfoRow('npub', message.npub!),
+              if (message.hasFile)
+                _buildInfoRow('File', message.attachedFile!),
+              if (message.hasLocation)
+                _buildInfoRow('Location',
+                    '${message.latitude}, ${message.longitude}'),
+              if (message.isSigned)
+                _buildInfoRow('Signature', message.signature!),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Build info row for dialog
+  Widget _buildInfoRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 12,
+            ),
+          ),
+          const SizedBox(height: 2),
+          SelectableText(
+            value,
+            style: const TextStyle(fontSize: 12),
+          ),
+          const Divider(),
+        ],
+      ),
+    );
+  }
+}

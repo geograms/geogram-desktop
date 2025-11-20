@@ -5,9 +5,14 @@ import 'package:path_provider/path_provider.dart';
 import 'package:crypto/crypto.dart';
 import 'package:mime/mime.dart';
 import '../models/collection.dart';
+import '../models/chat_channel.dart';
+import '../models/chat_security.dart';
+import '../models/chat_settings.dart';
 import '../util/nostr_key_generator.dart';
 import '../util/tlsh.dart';
 import 'config_service.dart';
+import 'chat_service.dart';
+import 'profile_service.dart';
 
 /// Service for managing collections on disk
 class CollectionService {
@@ -352,11 +357,103 @@ class CollectionService {
 ''';
         await indexFile.writeAsString(indexContent);
         stderr.writeln('Created skeleton index.html for www type');
+      } else if (type == 'chat') {
+        // Initialize chat collection structure
+        await _initializeChatCollection(collectionFolder);
+        stderr.writeln('Created chat collection skeleton');
       }
-      // Add more skeleton templates for other types here (forum, chat)
+      // Add more skeleton templates for other types here (forum)
     } catch (e) {
       stderr.writeln('Error creating skeleton files: $e');
       // Don't fail collection creation if skeleton creation fails
+    }
+  }
+
+  /// Initialize chat collection with main channel and metadata files
+  Future<void> _initializeChatCollection(Directory collectionFolder) async {
+    // Create main channel folder
+    final mainDir = Directory('${collectionFolder.path}/main');
+    await mainDir.create();
+
+    // Create main channel year folder
+    final year = DateTime.now().year;
+    final yearDir = Directory('${mainDir.path}/$year');
+    await yearDir.create();
+
+    // Create files subfolder in year directory
+    final filesDir = Directory('${yearDir.path}/files');
+    await filesDir.create();
+
+    // Create files folder in main directory (for non-dated files)
+    final mainFilesDir = Directory('${mainDir.path}/files');
+    await mainFilesDir.create();
+
+    // Create main channel config.json
+    final mainConfig = ChatChannelConfig.defaults(
+      id: 'main',
+      name: 'Main Chat',
+      description: 'Public group chat for everyone',
+    );
+    final configFile = File('${mainDir.path}/config.json');
+    await configFile.writeAsString(
+      const JsonEncoder.withIndent('  ').convert(mainConfig.toJson()),
+    );
+
+    // Create channels.json in extra/
+    final channelsFile = File('${collectionFolder.path}/extra/channels.json');
+    final channelsData = {
+      'version': '1.0',
+      'channels': [
+        {
+          'id': 'main',
+          'type': 'group',
+          'name': 'Main Chat',
+          'folder': 'main',
+          'participants': ['*'],
+          'created': DateTime.now().toIso8601String(),
+        }
+      ]
+    };
+    await channelsFile.writeAsString(
+      const JsonEncoder.withIndent('  ').convert(channelsData),
+    );
+
+    // Create participants.json in extra/
+    final participantsFile =
+        File('${collectionFolder.path}/extra/participants.json');
+    final participantsData = {
+      'version': '1.0',
+      'participants': {},
+    };
+    await participantsFile.writeAsString(
+      const JsonEncoder.withIndent('  ').convert(participantsData),
+    );
+
+    // Create security.json with current user as admin
+    final profileService = ProfileService();
+    final currentProfile = profileService.getProfile();
+    final securityFile = File('${collectionFolder.path}/extra/security.json');
+    final security = ChatSecurity(
+      adminNpub: currentProfile.npub.isNotEmpty ? currentProfile.npub : null,
+    );
+    final securityData = {
+      'version': '1.0',
+      ...security.toJson(),
+    };
+    await securityFile.writeAsString(
+      const JsonEncoder.withIndent('  ').convert(securityData),
+    );
+
+    // Create settings.json with signing enabled by default
+    final settingsFile = File('${collectionFolder.path}/extra/settings.json');
+    final settings = ChatSettings(signMessages: true);
+    await settingsFile.writeAsString(
+      const JsonEncoder.withIndent('  ').convert(settings.toJson()),
+    );
+
+    stderr.writeln('Chat collection initialized with main channel');
+    if (currentProfile.npub.isNotEmpty) {
+      stderr.writeln('Set ${currentProfile.callsign} (${currentProfile.npub}) as admin');
     }
   }
 

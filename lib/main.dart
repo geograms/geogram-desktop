@@ -21,6 +21,7 @@ import 'pages/about_page.dart';
 import 'pages/relays_page.dart';
 import 'pages/location_page.dart';
 import 'pages/notifications_page.dart';
+import 'pages/chat_browser_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -452,12 +453,15 @@ class _CollectionsPageState extends State<CollectionsPage> {
                               collection: collection,
                               onTap: () {
                                 LogService().log('Opened collection: ${collection.title}');
+                                // Route to appropriate page based on collection type
+                                final Widget targetPage = collection.type == 'chat'
+                                    ? ChatBrowserPage(collection: collection)
+                                    : CollectionBrowserPage(collection: collection);
+
                                 Navigator.push(
                                   context,
                                   MaterialPageRoute(
-                                    builder: (context) => CollectionBrowserPage(
-                                      collection: collection,
-                                    ),
+                                    builder: (context) => targetPage,
                                   ),
                                 ).then((_) => _loadCollections());
                               },
@@ -496,6 +500,18 @@ class _CollectionCard extends StatelessWidget {
     required this.onOpenFolder,
   });
 
+  /// Get appropriate icon based on collection type
+  IconData _getCollectionIcon() {
+    switch (collection.type) {
+      case 'chat':
+        return Icons.chat;
+      case 'www':
+        return Icons.language;
+      default:
+        return Icons.folder_special;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final i18n = I18nService();
@@ -512,7 +528,7 @@ class _CollectionCard extends StatelessWidget {
               Row(
                 children: [
                   Icon(
-                    Icons.folder_special,
+                    _getCollectionIcon(),
                     color: Theme.of(context).colorScheme.primary,
                     size: 32,
                   ),
