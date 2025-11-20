@@ -301,6 +301,25 @@ class _CollectionsPageState extends State<CollectionsPage> {
     LogService().log('Toggled favorite for ${collection.title}');
   }
 
+  Future<void> _openFolder(Collection collection) async {
+    if (collection.storagePath == null) {
+      LogService().log('Collection has no storage path');
+      return;
+    }
+
+    try {
+      final uri = Uri.file(collection.storagePath!);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri);
+        LogService().log('Opened folder: ${collection.storagePath}');
+      } else {
+        LogService().log('Cannot open folder: ${collection.storagePath}');
+      }
+    } catch (e) {
+      LogService().log('Error opening folder: $e');
+    }
+  }
+
   Future<void> _deleteCollection(Collection collection) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -414,6 +433,7 @@ class _CollectionsPageState extends State<CollectionsPage> {
                               },
                               onFavoriteToggle: () => _toggleFavorite(collection),
                               onDelete: () => _deleteCollection(collection),
+                              onOpenFolder: () => _openFolder(collection),
                             );
                           },
                         ),
@@ -436,12 +456,14 @@ class _CollectionCard extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback onFavoriteToggle;
   final VoidCallback onDelete;
+  final VoidCallback onOpenFolder;
 
   const _CollectionCard({
     required this.collection,
     required this.onTap,
     required this.onFavoriteToggle,
     required this.onDelete,
+    required this.onOpenFolder,
   });
 
   @override
@@ -492,6 +514,11 @@ class _CollectionCard extends StatelessWidget {
                               ),
                               onPressed: onFavoriteToggle,
                               tooltip: 'Toggle Favorite',
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.folder_open),
+                              onPressed: onOpenFolder,
+                              tooltip: 'Open Folder',
                             ),
                             IconButton(
                               icon: const Icon(Icons.delete_outline),
