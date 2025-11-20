@@ -205,7 +205,7 @@ class _HomePageState extends State<HomePage> {
       ),
       body: _pages[_selectedIndex],
       bottomNavigationBar: NavigationBar(
-        selectedIndex: _selectedIndex,
+        selectedIndex: _selectedIndex < 4 ? _selectedIndex : 0,
         onDestinationSelected: (int index) {
           setState(() {
             _selectedIndex = index;
