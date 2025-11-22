@@ -27,6 +27,8 @@ import 'pages/blog_browser_page.dart';
 import 'pages/events_browser_page.dart';
 import 'pages/news_browser_page.dart';
 import 'pages/postcards_browser_page.dart';
+import 'pages/contacts_browser_page.dart';
+import 'pages/places_browser_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -500,7 +502,17 @@ class _CollectionsPageState extends State<CollectionsPage> {
                                                             collectionPath: collection.storagePath ?? '',
                                                             collectionTitle: collection.title,
                                                           )
-                                                        : CollectionBrowserPage(collection: collection);
+                                                        : collection.type == 'contacts'
+                                                            ? ContactsBrowserPage(
+                                                                collectionPath: collection.storagePath ?? '',
+                                                                collectionTitle: collection.title,
+                                                              )
+                                                            : collection.type == 'places'
+                                                                ? PlacesBrowserPage(
+                                                                    collectionPath: collection.storagePath ?? '',
+                                                                    collectionTitle: collection.title,
+                                                                  )
+                                                                : CollectionBrowserPage(collection: collection);
 
                                 Navigator.push(
                                   context,
@@ -559,6 +571,10 @@ class _CollectionCard extends StatelessWidget {
         return Icons.language;
       case 'postcards':
         return Icons.credit_card;
+      case 'contacts':
+        return Icons.contacts;
+      case 'places':
+        return Icons.place;
       default:
         return Icons.folder_special;
     }
@@ -922,6 +938,26 @@ class _CreateCollectionDialogState extends State<_CreateCollectionDialog> {
                         : null,
                   ),
                 ),
+                DropdownMenuItem(
+                  value: 'contacts',
+                  enabled: !_existingTypes.contains('contacts'),
+                  child: Text(
+                    '${_i18n.t('collection_type_contacts')}${_existingTypes.contains('contacts') ? ' ${_i18n.t('already_exists')}' : ''}',
+                    style: _existingTypes.contains('contacts')
+                        ? TextStyle(color: Colors.grey)
+                        : null,
+                  ),
+                ),
+                DropdownMenuItem(
+                  value: 'places',
+                  enabled: !_existingTypes.contains('places'),
+                  child: Text(
+                    '${_i18n.t('collection_type_places')}${_existingTypes.contains('places') ? ' ${_i18n.t('already_exists')}' : ''}',
+                    style: _existingTypes.contains('places')
+                        ? TextStyle(color: Colors.grey)
+                        : null,
+                  ),
+                ),
               ],
               onChanged: _isCreating ? null : (value) {
                 if (value != null) {
@@ -937,7 +973,9 @@ class _CreateCollectionDialogState extends State<_CreateCollectionDialog> {
                           _titleController.text == 'chat' ||
                           _titleController.text == 'blog' ||
                           _titleController.text == 'events' ||
-                          _titleController.text == 'postcards') {
+                          _titleController.text == 'postcards' ||
+                          _titleController.text == 'contacts' ||
+                          _titleController.text == 'places') {
                         _titleController.text = '';
                       }
                     }

@@ -409,6 +409,14 @@ class CollectionService {
         // Initialize postcards collection structure
         await _initializePostcardsCollection(collectionFolder);
         stderr.writeln('Created postcards collection skeleton');
+      } else if (type == 'contacts') {
+        // Initialize contacts collection structure
+        await _initializeContactsCollection(collectionFolder);
+        stderr.writeln('Created contacts collection skeleton');
+      } else if (type == 'places') {
+        // Initialize places collection structure
+        await _initializePlacesCollection(collectionFolder);
+        stderr.writeln('Created places collection skeleton');
       }
       // Add more skeleton templates for other types here
     } catch (e) {
@@ -620,6 +628,62 @@ class CollectionService {
     );
 
     stderr.writeln('Postcards collection initialized');
+    if (currentProfile.npub.isNotEmpty) {
+      stderr.writeln('Set ${currentProfile.callsign} (${currentProfile.npub}) as admin');
+    }
+  }
+
+  /// Initialize contacts collection with directory structure
+  Future<void> _initializeContactsCollection(Directory collectionFolder) async {
+    // Create contacts directory
+    final contactsDir = Directory('${collectionFolder.path}/contacts');
+    await contactsDir.create();
+
+    // Create profile-pictures directory
+    final profilePicturesDir = Directory('${collectionFolder.path}/contacts/profile-pictures');
+    await profilePicturesDir.create();
+
+    // Create security.json with current user as admin
+    final profileService = ProfileService();
+    final currentProfile = profileService.getProfile();
+    final securityFile = File('${collectionFolder.path}/extra/security.json');
+    final securityData = {
+      'version': '1.0',
+      'adminNpub': currentProfile.npub.isNotEmpty ? currentProfile.npub : null,
+      'moderators': <String>[],
+      'bannedNpubs': <String>[],
+    };
+    await securityFile.writeAsString(
+      const JsonEncoder.withIndent('  ').convert(securityData),
+    );
+
+    stderr.writeln('Contacts collection initialized');
+    if (currentProfile.npub.isNotEmpty) {
+      stderr.writeln('Set ${currentProfile.callsign} (${currentProfile.npub}) as admin');
+    }
+  }
+
+  /// Initialize places collection with directory structure
+  Future<void> _initializePlacesCollection(Directory collectionFolder) async {
+    // Create places directory
+    final placesDir = Directory('${collectionFolder.path}/places');
+    await placesDir.create();
+
+    // Create security.json with current user as admin
+    final profileService = ProfileService();
+    final currentProfile = profileService.getProfile();
+    final securityFile = File('${collectionFolder.path}/extra/security.json');
+    final securityData = {
+      'version': '1.0',
+      'adminNpub': currentProfile.npub.isNotEmpty ? currentProfile.npub : null,
+      'moderators': <String>[],
+      'bannedNpubs': <String>[],
+    };
+    await securityFile.writeAsString(
+      const JsonEncoder.withIndent('  ').convert(securityData),
+    );
+
+    stderr.writeln('Places collection initialized');
     if (currentProfile.npub.isNotEmpty) {
       stderr.writeln('Set ${currentProfile.callsign} (${currentProfile.npub}) as admin');
     }
